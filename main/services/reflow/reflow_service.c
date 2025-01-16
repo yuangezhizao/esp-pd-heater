@@ -90,6 +90,18 @@ static bool validate_point_edit_unsafe(uint8_t profile_id, uint8_t point_idx, ui
     return true;
 }
 
+static bool validate_profile_points_array_unsafe(const reflow_point_t *points) {
+    if (points == NULL) return false;
+    for (size_t i = 0; i < REFLOW_POINT_COUNT; i++) {
+        if (i > 0) {
+            if (points[i].t_s <= points[i - 1].t_s) return false;
+        }
+        // Keep temps within reasonable range. Hard stop is handled elsewhere (300C).
+        if (points[i].temp_c < 20 || points[i].temp_c > 260) return false;
+    }
+    return true;
+}
+
 void reflow_service_init(void) {
     portENTER_CRITICAL(&s_lock);
     memset(&s, 0, sizeof(s));
@@ -194,6 +206,28 @@ void reflow_service_reset_profile(uint8_t profile_id) {
         }
     }
     portEXIT_CRITICAL(&s_lock);
+}
+
+bool reflow_service_replace_profile_points(uint8_t profile_id, const reflow_point_t *points, size_t point_count) {
+    if (profile_id >= REFLOW_PROFILE_COUNT) return false;
+    if (points == NULL) return false;
+    if (point_count < REFLOW_POINT_COUNT) return false;
+
+    bool ok = false;
+    portENTER_CRITICAL(&s_lock);
+    if (s.state != REFLOW_STATE_RUNNING) {
+        ok = validate_profile_points_array_unsafe(points);
+        if (ok) {
+            memcpy(s_profile_points[profile_id], points, sizeof(s_profile_points[profile_id]));
+            s.revision[profile_id]++;
+            if (profile_id == s.profile_id) {
+                const uint32_t elapsed_ms = (s.state == REFLOW_STATE_PAUSED) ? s.base_elapsed_ms : 0;
+                s.tset_c = interpolate_tset_unsafe(s.profile_id, elapsed_ms);
+            }
+        }
+    }
+    portEXIT_CRITICAL(&s_lock);
+    return ok;
 }
 
 bool reflow_service_get_profile_points(uint8_t profile_id, reflow_point_t *out_points, size_t point_count) {

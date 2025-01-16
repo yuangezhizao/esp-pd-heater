@@ -50,6 +50,10 @@ bool reflow_service_edit_point(uint8_t profile_id, uint8_t point_idx, uint16_t t
 // Reset a profile's editable points back to defaults.
 void reflow_service_reset_profile(uint8_t profile_id);
 
+// Replace all editable points for a profile at once (RAM only).
+// Returns false if validation fails or while RUNNING.
+bool reflow_service_replace_profile_points(uint8_t profile_id, const reflow_point_t *points, size_t point_count);
+
 // Copy current editable points for a profile into caller-provided buffer.
 bool reflow_service_get_profile_points(uint8_t profile_id, reflow_point_t *out_points, size_t point_count);
 
@@ -65,4 +69,3 @@ void reflow_service_snapshot(reflow_snapshot_t *out);
 #ifdef __cplusplus
 }
 #endif
-

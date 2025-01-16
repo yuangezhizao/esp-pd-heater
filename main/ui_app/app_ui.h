@@ -8,8 +8,8 @@
 // UI 组件句柄
 extern lv_chart_series_t *ui_Chart1_series_1;
 extern lv_chart_series_t *ui_Chart1_series_2;
-extern lv_chart_series_t *ui_ReflowChart_series_tset;
-extern lv_chart_series_t *ui_ReflowChart_series_temp;
+extern lv_chart_series_t *ui_ReflowRunChart_series_tset;
+extern lv_chart_series_t *ui_ReflowRunChart_series_temp;
 
 // UI 初始化函数
 void app_lvgl_display(void);
