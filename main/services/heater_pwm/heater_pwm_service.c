@@ -11,7 +11,7 @@
 
 #define HEATER_GPIO GPIO_NUM_3
 
-#define LEDC_TIMER LEDC_TIMER_1
+#define LEDC_TIMER LEDC_TIMER_2
 #define LEDC_MODE LEDC_LOW_SPEED_MODE
 #define LEDC_CHANNEL LEDC_CHANNEL_3
 #define LEDC_DUTY_RES LEDC_TIMER_10_BIT
@@ -60,4 +60,3 @@ static void heater_pwm_task(void *pvParameter) {
 void app_service_heater_pwm_start(void) {
     xTaskCreate(heater_pwm_task, "heater_pwm", 4096, NULL, 2, NULL);
 }
-
