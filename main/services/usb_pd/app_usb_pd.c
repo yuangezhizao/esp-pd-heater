@@ -7,6 +7,7 @@
 #include "app_strbuf.h"
 #include "app_state.h"
 #include "ch32x035_pd.h"
+#include "esp_app_desc.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -75,6 +76,11 @@ void app_pd_update(void) {
 
     app_state_t st = {0};
     app_state_snapshot(&st);
+
+    const esp_app_desc_t *desc = esp_app_get_description();
+    if (desc != NULL && desc->version[0] != '\0') {
+        app_strbuf_appendf(&sb, "FW: %s\n", desc->version);
+    }
 
     // 临时加个 DEBUG 调试信息
     app_strbuf_appendf(&sb, "CHIP TEMP: %.2f°C\nHEAT TEMP: %.2f°C\nTILT ANGLE: %.2f°\n",
