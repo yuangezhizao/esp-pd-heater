@@ -27,7 +27,8 @@ static void ui_render_task(void *pvParameter) {
     (void)pvParameter;
 
     TickType_t last_wake = xTaskGetTickCount();
-    uint32_t last_pd_refresh_ms = 0;
+    char pd_text[512] = {0};
+    char pd_text_last[512] = {0};
 
     char buf_voltage[16];
     char buf_current[16];
@@ -39,6 +40,8 @@ static void ui_render_task(void *pvParameter) {
         app_state_snapshot(&st);
 
         bool undervoltage = (st.power.voltage < (float)st.power.min_voltage);
+
+        (void)app_pd_get_info_text_copy(pd_text, sizeof(pd_text));
 
         bsp_display_lock(0);
 
@@ -75,11 +78,11 @@ static void ui_render_task(void *pvParameter) {
         snprintf(buf_temp, sizeof(buf_temp), "%d", abs((int)(fmodf(temp * 10.0f, 10.0f))));
         lv_label_set_text(ui_LabelRealTemp2, buf_temp);
 
-        // PD info (slow refresh)
-        uint32_t now_ms = (uint32_t)(esp_timer_get_time() / 1000ULL);
-        if ((now_ms - last_pd_refresh_ms) >= 500) {
-            last_pd_refresh_ms = now_ms;
-            lv_label_set_text(ui_LabelPDInfo, app_pd_get_info_text());
+        // PD info: update only when content changes (reduce LVGL heap churn)
+        if (strncmp(pd_text, pd_text_last, sizeof(pd_text_last)) != 0) {
+            strncpy(pd_text_last, pd_text, sizeof(pd_text_last) - 1);
+            pd_text_last[sizeof(pd_text_last) - 1] = '\0';
+            lv_label_set_text(ui_LabelPDInfo, pd_text_last);
         }
 
         bsp_display_unlock();
