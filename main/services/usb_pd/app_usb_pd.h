@@ -2,6 +2,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stddef.h>
 
 #include "i2c_bus.h"
 
@@ -22,16 +23,6 @@ typedef enum {
     PD_VOLT_MAX
 } pd_voltage_t;
 
-// PD状态结构体
-typedef struct {
-    pd_chip_type_t chip_type;  // 芯片类型
-    bool is_attached;          // 是否连接
-    bool is_cc2;               // 是否CC2连接
-    pd_voltage_t max_voltage;  // 最大支持电压
-    char info_text[512];       // 状态信息文本
-    void* chip_handle;         // 芯片句柄(husb238或ch32x035)
-} pd_state_t;
-
 // 初始化PD
 void app_pd_init(i2c_bus_handle_t i2c_bus);
 
@@ -44,5 +35,5 @@ bool app_pd_request_voltage(pd_voltage_t voltage);
 // 请求最大电压
 void app_pd_request_max_voltage(void);
 
-// 获取状态信息文本
-const char* app_pd_get_info_text(void);
+// 线程安全地拷贝状态信息文本（始终保证 NUL 结尾）
+bool app_pd_get_info_text_copy(char *out, size_t out_len);

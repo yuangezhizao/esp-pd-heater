@@ -1,6 +1,7 @@
 #include "app_usb_pd.h"
 
 #include <math.h>
+#include <string.h>
 
 #include "Adafruit_HUSB238.h"
 #include "app_strbuf.h"
@@ -8,9 +9,20 @@
 #include "ch32x035_pd.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 
 #define TAG "usb_pd"
+
+typedef struct {
+    pd_chip_type_t chip_type;  // 芯片类型
+    bool is_attached;          // 是否连接
+    bool is_cc2;               // 是否CC2连接
+    pd_voltage_t max_voltage;  // 最大支持电压
+    char info_text[512];       // 状态信息文本
+    SemaphoreHandle_t info_text_mutex;
+    void *chip_handle;  // 芯片句柄(husb238或ch32x035)
+} pd_state_t;
 
 static pd_state_t pd_state = {0};
 
@@ -18,6 +30,10 @@ static pd_state_t pd_state = {0};
 static const uint8_t voltage_map[] = {5, 9, 12, 15, 18, 20};
 
 void app_pd_init(i2c_bus_handle_t i2c_bus) {
+    if (pd_state.info_text_mutex == NULL) {
+        pd_state.info_text_mutex = xSemaphoreCreateMutex();
+    }
+
     if (i2c_bus == NULL) {
         ESP_LOGE(TAG, "app_pd_init: i2c_bus is NULL");
         pd_state.chip_type = PD_CHIP_HUSB238;
@@ -53,8 +69,9 @@ void app_pd_init(i2c_bus_handle_t i2c_bus) {
 }
 
 void app_pd_update(void) {
+    char tmp[sizeof(pd_state.info_text)];
     app_strbuf_t sb;
-    app_strbuf_init(&sb, pd_state.info_text, sizeof(pd_state.info_text));
+    app_strbuf_init(&sb, tmp, sizeof(tmp));
 
     app_state_t st = {0};
     app_state_snapshot(&st);
@@ -139,6 +156,16 @@ void app_pd_update(void) {
         //     strcat(pd_state.info_text, id_str);
         // }
     }
+
+    if (pd_state.info_text_mutex != NULL && xSemaphoreTake(pd_state.info_text_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        strncpy(pd_state.info_text, tmp, sizeof(pd_state.info_text) - 1);
+        pd_state.info_text[sizeof(pd_state.info_text) - 1] = '\0';
+        xSemaphoreGive(pd_state.info_text_mutex);
+    } else {
+        // Best-effort update (still keep it NUL-terminated)
+        strncpy(pd_state.info_text, tmp, sizeof(pd_state.info_text) - 1);
+        pd_state.info_text[sizeof(pd_state.info_text) - 1] = '\0';
+    }
 }
 
 bool app_pd_request_voltage(pd_voltage_t voltage) {
@@ -187,6 +214,19 @@ void app_pd_request_max_voltage(void) {
     }
 }
 
-const char *app_pd_get_info_text(void) {
-    return pd_state.info_text;
+bool app_pd_get_info_text_copy(char *out, size_t out_len) {
+    if (out == NULL || out_len == 0) return false;
+
+    out[0] = '\0';
+    if (pd_state.info_text_mutex != NULL && xSemaphoreTake(pd_state.info_text_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        strncpy(out, pd_state.info_text, out_len - 1);
+        out[out_len - 1] = '\0';
+        xSemaphoreGive(pd_state.info_text_mutex);
+        return true;
+    }
+
+    // Best-effort copy (still keep it NUL-terminated)
+    strncpy(out, pd_state.info_text, out_len - 1);
+    out[out_len - 1] = '\0';
+    return true;
 }
