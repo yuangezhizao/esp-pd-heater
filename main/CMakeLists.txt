@@ -5,6 +5,7 @@ set(SRC_DIRS
     "core/controller"
     "core/events"
     "core/state"
+    # core/state also contains LCD variant selection (app_lcd_variant.*)
     "services/backlight"
     "services/buzzer"
     "services/chip_temp"

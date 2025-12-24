@@ -54,7 +54,15 @@
 #define BSP_LCD_RST           (GPIO_NUM_5)
 #define BSP_LCD_BACKLIGHT     (GPIO_NUM_18)
 
-#define LCD_TYPE              1 // 1: HSD, 2: BOE
+/**
+ * @brief LCD panel variant (ST7735S-compatible)
+ *
+ * Note: Different vendors require different invert/gap settings.
+ */
+typedef enum {
+    BSP_LCD_VARIANT_HSD = 0, /*!< HSD: invert=true, gap=(1,26) */
+    BSP_LCD_VARIANT_BOE = 1, /*!< BOE: invert=false, gap=(0,24) */
+} bsp_lcd_variant_t;
 
 /* Buttons */
 typedef enum {
@@ -108,6 +116,20 @@ typedef struct {
  * @return Pointer to LVGL display or NULL when error occurred
  */
 lv_display_t *bsp_display_start(void);
+
+/**
+ * @brief Set LCD panel variant (must be called before bsp_display_start)
+ *
+ * @param variant LCD panel variant
+ */
+void bsp_display_set_lcd_variant(bsp_lcd_variant_t variant);
+
+/**
+ * @brief Get configured LCD panel variant
+ *
+ * @return LCD panel variant
+ */
+bsp_lcd_variant_t bsp_display_get_lcd_variant(void);
 
 /**
  * @brief Initialize display

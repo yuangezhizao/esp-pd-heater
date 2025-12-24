@@ -1,5 +1,6 @@
 #include "app_buzzer.h"
 #include "app_controller.h"
+#include "app_lcd_variant.h"
 #include "app_services.h"
 #include "app_state.h"
 #include "app_ui.h"
@@ -37,6 +38,13 @@ void app_main(void) {
     // One-shot boot beep
     xTaskCreate(buzzer_start_task, "buzzer_start_task", 2048, NULL, 10, NULL);
 
+    // LCD variant auto-toggle (until first heating), then configure BSP
+    app_lcd_variant_t lcd_variant = APP_LCD_VARIANT_HSD;
+    bool lcd_locked = false;
+    ESP_ERROR_CHECK(app_lcd_variant_boot_select(&lcd_variant, &lcd_locked));
+    bsp_display_set_lcd_variant((lcd_variant == APP_LCD_VARIANT_BOE) ? BSP_LCD_VARIANT_BOE : BSP_LCD_VARIANT_HSD);
+    ESP_LOGI(TAG, "LCD variant=%s locked=%d", app_lcd_variant_to_str(lcd_variant), (int)lcd_locked);
+
     // Display + LVGL
     bsp_display_start();
     app_lvgl_display();
@@ -62,4 +70,3 @@ void app_main(void) {
         app_state_save();
     }
 }
-

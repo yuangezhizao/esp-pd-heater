@@ -33,6 +33,7 @@ static lv_indev_t *disp_indev = NULL;
 static uint8_t current_brightness_percent = 0;
 static uint32_t current_buzzer_volume = 7168;
 static piano_note_t current_buzzer_note = NOTE_C8;
+static bsp_lcd_variant_t s_lcd_variant = BSP_LCD_VARIANT_HSD;
 
 static i2c_bus_handle_t s_i2c_bus = NULL;
 
@@ -94,6 +95,14 @@ static lv_indev_t *bsp_display_indev_init(lv_display_t *disp) {
     };
 
     return _lvgl_port_add_encoder(&encoder);
+}
+
+void bsp_display_set_lcd_variant(bsp_lcd_variant_t variant) {
+    s_lcd_variant = variant;
+}
+
+bsp_lcd_variant_t bsp_display_get_lcd_variant(void) {
+    return s_lcd_variant;
 }
 
 // Bit number used to represent command and parameter
@@ -270,15 +279,32 @@ esp_err_t bsp_display_new(const bsp_display_config_t *config, esp_lcd_panel_hand
     BSP_ERROR_CHECK_RETURN_ERR(esp_lcd_panel_reset(*ret_panel));
     BSP_ERROR_CHECK_RETURN_ERR(esp_lcd_panel_init(*ret_panel));
 
-#if LCD_TYPE == 1
-    // st7735s 瀚彩 HSD
-    BSP_ERROR_CHECK_RETURN_ERR(esp_lcd_panel_invert_color(*ret_panel, true));
-    BSP_ERROR_CHECK_RETURN_ERR(esp_lcd_panel_set_gap(*ret_panel, 1, 26));
-#elif LCD_TYPE == 2
-    // st7735s / gc9107 京东方 BOE
-    BSP_ERROR_CHECK_RETURN_ERR(esp_lcd_panel_invert_color(*ret_panel, false));
-    BSP_ERROR_CHECK_RETURN_ERR(esp_lcd_panel_set_gap(*ret_panel, 0, 24));
-#endif
+    bool invert_color = false;
+    int gap_x = 0;
+    int gap_y = 0;
+    switch (s_lcd_variant) {
+        case BSP_LCD_VARIANT_HSD:
+            // st7735s 瀚彩 HSD
+            invert_color = true;
+            gap_x = 1;
+            gap_y = 26;
+            break;
+        case BSP_LCD_VARIANT_BOE:
+            // st7735s / gc9107 京东方 BOE
+            invert_color = false;
+            gap_x = 0;
+            gap_y = 24;
+            break;
+        default:
+            ESP_LOGW(TAG, "Unknown LCD variant=%d, fallback to HSD settings", (int)s_lcd_variant);
+            invert_color = true;
+            gap_x = 1;
+            gap_y = 26;
+            break;
+    }
+
+    BSP_ERROR_CHECK_RETURN_ERR(esp_lcd_panel_invert_color(*ret_panel, invert_color));
+    BSP_ERROR_CHECK_RETURN_ERR(esp_lcd_panel_set_gap(*ret_panel, gap_x, gap_y));
 
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
     BSP_ERROR_CHECK_RETURN_ERR(esp_lcd_panel_disp_on_off(*ret_panel, true));

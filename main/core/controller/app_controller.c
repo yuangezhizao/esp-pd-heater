@@ -2,6 +2,7 @@
 
 #include "app_buzzer.h"
 #include "app_events.h"
+#include "app_lcd_variant.h"
 #include "app_state.h"
 #include "beep.h"
 #include "bsp/esp-bsp.h"
@@ -15,6 +16,12 @@
 static void controller_handle_event(const app_event_t *event) {
     switch (event->type) {
         case APP_EVENT_SET_HEATING: {
+            if (event->value.b) {
+                esp_err_t err = app_lcd_variant_lock();
+                if (err != ESP_OK) {
+                    ESP_LOGW(TAG, "Failed to lock LCD variant: %s", esp_err_to_name(err));
+                }
+            }
             app_state_set_heating(event->value.b);
             // best-effort: if stopped via UI, callbacks already updated label; if stopped elsewhere, controller handles via FORCE_STOP.
             break;
