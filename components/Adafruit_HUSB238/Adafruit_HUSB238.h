@@ -1,4 +1,3 @@
-#include "driver/i2c.h"
 #include "i2c_bus.h"
 
 typedef void *husb238_handle_t;

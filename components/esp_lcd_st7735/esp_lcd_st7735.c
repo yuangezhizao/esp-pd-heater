@@ -173,9 +173,9 @@ const uint8_t TFT_INIT_DELAY = 0;
 static const st7735_lcd_init_cmd_t vendor_specific_init_default[] = {
     {ST7735_SWRESET, (uint8_t[]){0x00}, 1, 0},                                                                                            // Software reset, 0 args, w/delay 150
     {ST7735_SLPOUT, (uint8_t[]){0x00}, 1, 0},                                                                                             // Out of sleep mode, 0 args, w/delay 500
-    {ST7735_FRMCTR1, (uint8_t[]){0x00, 0x01, 0x01}, 3, 0},                                                                                // Frame rate ctrl - normal mode, 3 args: Rate = fosc/(1x2+40) * (LINE+2C+2D)
+    {ST7735_FRMCTR1, (uint8_t[]){0x00, 0x01, 0x00}, 3, 0},                                                                                // Frame rate control - normal mode, 3 args: Rate = fosc/(1x2+40) * (LINE+2C+2D)
     {ST7735_FRMCTR2, (uint8_t[]){0x00, 0x01, 0x01}, 3, 0},                                                                                // Frame rate control - idle mode, 3 args:Rate = fosc/(1x2+40) * (LINE+2C+2D)
-    {ST7735_FRMCTR3, (uint8_t[]){0x00, 0x01, 0x01, 0x00, 0x01, 0x01}, 6, 0},                                                              // Frame rate ctrl - partial mode, 6 args:Dot inversion mode. Line inversion mode
+    {ST7735_FRMCTR3, (uint8_t[]){0x00, 0x01, 0x01, 0x00, 0x01, 0x01}, 6, 0},                                                              // Frame rate control - partial mode, 6 args:Dot inversion mode. Line inversion mode
     {ST7735_INVCTR, (uint8_t[]){0x03}, 1, 0},                                                                                             // Display inversion ctrl, 1 arg, no delay:No inversion
     {ST7735_PWCTR1, (uint8_t[]){0x62, 0x02, 0x04}, 3, 0},                                                                                 // Power control, 3 args, no delay:-4.6V AUTO mode
     {ST7735_PWCTR2, (uint8_t[]){0xC0}, 1, 0},                                                                                             // Power control, 1 arg, no delay:VGH25 = 2.4C VGSEL = -10 VGH = 3 * AVDD

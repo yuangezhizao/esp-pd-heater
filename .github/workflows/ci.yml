@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: espressif/idf:v5.5.1
+    env:
+      IDF_TARGET: esp32c3
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Mark workspace safe (git)
+        shell: bash
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Cache ESP-IDF tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            /root/.espressif
+          key: ${{ runner.os }}-espressif-${{ env.IDF_TARGET }}-${{ hashFiles('sdkconfig.defaults', 'dependencies.lock', 'CMakeLists.txt', 'main/CMakeLists.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-espressif-${{ env.IDF_TARGET }}-
+
+      - name: Build
+        shell: bash
+        run: |
+          . "$IDF_PATH/export.sh"
+          idf.py set-target "$IDF_TARGET"
+          idf.py build
+
+      - name: Package firmware
+        shell: bash
+        run: |
+          . "$IDF_PATH/export.sh"
+          bash tools/ci/package_firmware.sh build dist
+
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ env.IDF_TARGET }}-${{ github.sha }}
+          if-no-files-found: error
+          path: |
+            dist/
+

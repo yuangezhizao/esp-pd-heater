@@ -1,5 +1,15 @@
-.vscode
+.vscode/
 
-build
-managed_components
+build/
+
+managed_components/
 dependencies.lock
+.DS_Store
+
+dist/
+
+AGENTS.md
+.doc/
+
+sdkconfig
+sdkconfig.old

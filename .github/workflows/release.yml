@@ -1,0 +1,78 @@
+name: Release Firmware
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    container: espressif/idf:v5.5.1
+    env:
+      IDF_TARGET: esp32c3
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Mark workspace safe (git)
+        shell: bash
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Cache ESP-IDF tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            /root/.espressif
+          key: ${{ runner.os }}-espressif-${{ env.IDF_TARGET }}-${{ hashFiles('sdkconfig.defaults', 'dependencies.lock', 'CMakeLists.txt', 'main/CMakeLists.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-espressif-${{ env.IDF_TARGET }}-
+
+      - name: Build
+        shell: bash
+        run: |
+          . "$IDF_PATH/export.sh"
+          idf.py set-target "$IDF_TARGET"
+          idf.py build
+
+      - name: Package firmware
+        shell: bash
+        run: |
+          . "$IDF_PATH/export.sh"
+          bash tools/ci/package_firmware.sh build dist
+
+      - name: Create zip
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          import zipfile
+
+          tag = os.environ.get("GITHUB_REF_NAME", "unknown")
+          target = os.environ.get("IDF_TARGET", "esp32c3")
+          out_name = f"firmware-{target}-{tag}.zip"
+
+          with zipfile.ZipFile(out_name, "w", compression=zipfile.ZIP_DEFLATED) as z:
+            for root, _, files in os.walk("dist"):
+              for fn in files:
+                path = os.path.join(root, fn)
+                z.write(path, arcname=os.path.relpath(path, "dist"))
+          print(out_name)
+          PY
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            firmware-*.zip
+            dist/SHA256SUMS.txt
+            dist/flash_project_args
+            dist/flasher_args.json
+            dist/*.bin
+
