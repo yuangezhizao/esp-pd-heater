@@ -85,7 +85,7 @@ void app_state_init(void) {
     g_state.power.current = 0;
     g_state.power.power = 0;
     g_state.power.shunt_voltage = 0;
-    g_state.power.shunt_res = 10;   // 默认10mΩ
+    g_state.power.shunt_res = 5;    // 默认5mΩ
     g_state.power.min_voltage = 6;  // 默认6V
 
     app_state_unlock();
@@ -331,7 +331,7 @@ void app_state_load(void) {
             if (value_u8 >= 1 && value_u8 <= 20) {
                 g_state.power.shunt_res = value_u8;
             } else {
-                g_state.power.shunt_res = 10;  // 超出范围使用默认值
+                g_state.power.shunt_res = 5;  // 超出范围使用默认值
                 ESP_LOGW(TAG, "Invalid shunt resistance value: %d, using default", value_u8);
             }
         } else {
