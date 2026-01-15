@@ -12,6 +12,7 @@ set(SRC_DIRS
     "services/heater_pwm"
     "services/motion"
     "services/power_meter"
+    "services/reflow"
     "services/temp_control"
     "services/usb_pd"
     "ui_app"

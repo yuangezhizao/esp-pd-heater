@@ -13,6 +13,7 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "pid_ctrl.h"
+#include "reflow/reflow_service.h"
 
 #define TAG "pt1000_pid"
 
@@ -142,10 +143,22 @@ static void pt1000_pid_task(void *pvParameter) {
             temp_filtered = pt1000_temp;
         }
 
-        pid_temperature_error = (float)st.temp.pid_target - pt1000_temp;
+        const uint32_t now_ms = (uint32_t)(esp_timer_get_time() / 1000);
+        float reflow_tset_c = NAN;
+        bool reflow_stopped = false;
+        const reflow_state_t reflow_state = reflow_service_tick(now_ms, pt1000_temp, &reflow_tset_c, &reflow_stopped);
+        if (reflow_stopped) {
+            // End-of-profile or hard overtemp: stop heating immediately and return to IDLE.
+            app_state_set_heating(false);
+        }
+        const bool reflow_running = (reflow_state == REFLOW_STATE_RUNNING);
+        const bool heating_on = st.heating.on && !reflow_stopped;
+
+        const float pid_target_c = reflow_running ? reflow_tset_c : (float)st.temp.pid_target;
+        pid_temperature_error = pid_target_c - pt1000_temp;
         const bool temp_ok = isfinite(pt1000_temp) && isfinite(pid_temperature_error);
 
-        if (st.heating.on && temp_ok) {
+        if (heating_on && temp_ok) {
             if (!last_heating_on) {
                 // Reset PID accumulation when heating starts to avoid using stale integral/derivative history.
                 app_state_lock();
@@ -154,6 +167,7 @@ static void pt1000_pid_task(void *pvParameter) {
                 last_max_output = -1.0f;
             }
 
+            const uint8_t soft_start_s = reflow_running ? 0 : st.heating.soft_start_time_s;
             float power_limit_value = power_limit(st.power.voltage,
                                                 st.heating.supply_max_power,
                                                 st.heating.pcb_r_at_20c / 100.0f,
@@ -162,7 +176,7 @@ static void pt1000_pid_task(void *pvParameter) {
                                                 st.power.power,
                                                 st.heating.pwm_current_duty,
                                                 st.heating.pwm_max_duty,
-                                                st.heating.soft_start_time_s);
+                                                soft_start_s);
             float max_output = (float)st.heating.pwm_max_duty * power_limit_value;
             if (fabsf(max_output - last_max_output) >= 1.0f) {
                 app_state_lock();
@@ -176,7 +190,7 @@ static void pt1000_pid_task(void *pvParameter) {
             pid_compute(g_state.temp.pid_ctrl, pid_temperature_error, &pid_output_value);
             app_state_unlock();
         } else {
-            if (!st.heating.on) {
+            if (!heating_on) {
                 // Ensure power limiter session state is reset when heating stops.
                 // Otherwise the next heating session may inherit a stale duty cap and skip the soft-start.
                 (void)power_limit(st.power.voltage,
@@ -196,7 +210,7 @@ static void pt1000_pid_task(void *pvParameter) {
                 app_state_unlock();
             }
         }
-        last_heating_on = st.heating.on;
+        last_heating_on = heating_on;
 
         uint32_t pwm_current_duty = (uint32_t)roundf(pid_output_value);
         app_state_lock();
@@ -206,12 +220,12 @@ static void pt1000_pid_task(void *pvParameter) {
         app_state_unlock();
 
         loop_count++;
-        if (st.heating.on && (loop_count % (1000 / PID_LOOP_PERIOD_MS) == 0)) {
+        if (heating_on && (loop_count % (1000 / PID_LOOP_PERIOD_MS) == 0)) {
             ESP_LOGD(TAG,
-                     "Traw=%.2fC T=%.2fC target=%u err=%.2f max=%.1f duty=%u",
+                     "Traw=%.2fC T=%.2fC target=%.1f err=%.2f max=%.1f duty=%u",
                      pt1000_temp_raw,
                      pt1000_temp,
-                     (unsigned)st.temp.pid_target,
+                     (double)pid_target_c,
                      pid_temperature_error,
                      (double)last_max_output,
                      (unsigned)pwm_current_duty);
@@ -219,12 +233,12 @@ static void pt1000_pid_task(void *pvParameter) {
 
         // First time temperature reaches target after heating started: beep once.
         bool is_temp_reached = st.heating.is_temp_reached;
-        if (st.heating.on && !is_temp_reached && (pid_temperature_error >= -1 && pid_temperature_error <= 0)) {
+        if (!reflow_running && heating_on && !is_temp_reached && (pid_temperature_error >= -1 && pid_temperature_error <= 0)) {
             is_temp_reached = true;
             uint8_t vol = st.config.buzzer_volume < 1 ? 1 : st.config.buzzer_volume;
             beep(st.config.buzzer_note, calculate_buzzer_volume(vol), 1, 0, 1);
         }
-        if (!st.heating.on) is_temp_reached = false;
+        if (!heating_on) is_temp_reached = false;
         app_state_lock();
         g_state.heating.is_temp_reached = is_temp_reached;
         app_state_unlock();

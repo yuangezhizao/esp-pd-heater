@@ -28,6 +28,13 @@ typedef enum {
     APP_EVENT_SET_MIN_VOLTAGE,
     APP_EVENT_SET_SOFT_START_TIME,
 
+    APP_EVENT_REFLOW_SET_PROFILE,
+    APP_EVENT_REFLOW_START,
+    APP_EVENT_REFLOW_PAUSE,
+    APP_EVENT_REFLOW_STOP,
+    APP_EVENT_REFLOW_EDIT_POINT,
+    APP_EVENT_REFLOW_RESET_PROFILE,
+
     APP_EVENT_DATA_RECORD_RESTART,
 } app_event_type_t;
 
@@ -47,6 +54,12 @@ typedef struct {
         uint16_t u16;
         int16_t i16;
         float f;
+        struct {
+            uint8_t profile_id;  // 0..2
+            uint8_t point_idx;   // 0..7
+            uint16_t t_s;
+            int16_t temp_c;
+        } reflow_point;
     } value;
 } app_event_t;
 

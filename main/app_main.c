@@ -9,6 +9,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "nvs_flash.h"
+#include "reflow/reflow_service.h"
 
 #define TAG "esp-pd-heater"
 
@@ -26,6 +27,9 @@ void app_main(void) {
     // Initialize state
     app_state_init();
     app_state_load();
+
+    // Reflow profiles (RAM-only edits for now)
+    reflow_service_init();
 
     // Init I2C bus (shared)
     ESP_ERROR_CHECK(bsp_i2c_init());

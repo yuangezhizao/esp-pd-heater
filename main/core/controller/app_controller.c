@@ -7,6 +7,8 @@
 #include "beep.h"
 #include "bsp/esp-bsp.h"
 #include "esp_log.h"
+#include "esp_timer.h"
+#include "reflow/reflow_service.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -16,6 +18,8 @@
 static void controller_handle_event(const app_event_t *event) {
     switch (event->type) {
         case APP_EVENT_SET_HEATING: {
+            // Manual heating requests override reflow mode.
+            reflow_service_stop();
             if (event->value.b) {
                 esp_err_t err = app_lcd_variant_lock();
                 if (err != ESP_OK) {
@@ -27,6 +31,7 @@ static void controller_handle_event(const app_event_t *event) {
             break;
         }
         case APP_EVENT_FORCE_STOP_HEATING: {
+            reflow_service_stop();
             app_state_set_heating(false);
 
             app_state_t snapshot;
@@ -120,6 +125,61 @@ static void controller_handle_event(const app_event_t *event) {
             break;
         case APP_EVENT_SET_SOFT_START_TIME:
             app_state_set_soft_start_time(event->value.u8);
+            break;
+
+        case APP_EVENT_REFLOW_SET_PROFILE:
+            reflow_service_set_profile(event->value.u8);
+            break;
+
+        case APP_EVENT_REFLOW_START: {
+            app_state_t st = {0};
+            app_state_snapshot(&st);
+            if (st.power.voltage < (float)st.power.min_voltage) {
+                ESP_LOGW(TAG, "REFLOW start blocked by undervoltage: %.2fV < %uV",
+                         (double)st.power.voltage, (unsigned)st.power.min_voltage);
+                break;
+            }
+
+            esp_err_t err = app_lcd_variant_lock();
+            if (err != ESP_OK) {
+                ESP_LOGW(TAG, "Failed to lock LCD variant: %s", esp_err_to_name(err));
+            }
+
+            const uint32_t now_ms = (uint32_t)(esp_timer_get_time() / 1000);
+            reflow_service_start(now_ms);
+            app_state_set_heating(true);
+            break;
+        }
+
+        case APP_EVENT_REFLOW_PAUSE: {
+            const uint32_t now_ms = (uint32_t)(esp_timer_get_time() / 1000);
+            reflow_service_pause(now_ms);
+            app_state_set_heating(false);
+            break;
+        }
+
+        case APP_EVENT_REFLOW_STOP:
+            reflow_service_stop();
+            app_state_set_heating(false);
+            break;
+
+        case APP_EVENT_REFLOW_EDIT_POINT: {
+            bool ok = reflow_service_edit_point(event->value.reflow_point.profile_id,
+                                                event->value.reflow_point.point_idx,
+                                                event->value.reflow_point.t_s,
+                                                event->value.reflow_point.temp_c);
+            if (!ok) {
+                ESP_LOGW(TAG, "REFLOW edit point rejected (profile=%u point=%u t=%u temp=%d)",
+                         (unsigned)event->value.reflow_point.profile_id,
+                         (unsigned)event->value.reflow_point.point_idx,
+                         (unsigned)event->value.reflow_point.t_s,
+                         (int)event->value.reflow_point.temp_c);
+            }
+            break;
+        }
+
+        case APP_EVENT_REFLOW_RESET_PROFILE:
+            reflow_service_reset_profile(event->value.u8);
             break;
         case APP_EVENT_DATA_RECORD_RESTART:
             app_state_set_data_record_restart(true);

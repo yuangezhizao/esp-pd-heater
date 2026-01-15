@@ -10,6 +10,7 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "nvs.h"
+#include "reflow/reflow_service.h"
 #include "ui.h"
 
 #define TAG "app_ui"
@@ -17,6 +18,8 @@
 // chart
 lv_chart_series_t *ui_Chart1_series_1 = NULL;
 lv_chart_series_t *ui_Chart1_series_2 = NULL;
+lv_chart_series_t *ui_ReflowChart_series_tset = NULL;
+lv_chart_series_t *ui_ReflowChart_series_temp = NULL;
 
 // 在文件开头添加宏定义
 #define SLIDER_SCROLL_MIN_INTERVAL 10   // min time interval between scrolls (ms)
@@ -36,6 +39,9 @@ static slider_scroll_state_t temp_slider_state;
 static slider_scroll_state_t power_slider_state;
 static slider_scroll_state_t bl_slider_state;
 static slider_scroll_state_t vol_slider_state;
+
+static lv_group_t *s_ui_group = NULL;
+static bool s_reflow_edit_modal_open = false;
 
 // 获取滚动步长的函数
 static int slider_scroll_speed_get_step(slider_scroll_state_t *state) {
@@ -390,10 +396,175 @@ static void slider_set_soft_start_time_event_cb(lv_event_t *e) {
     bsp_display_unlock();
 }
 
+static void reflow_edit_modal_group_enable(bool enable) {
+    if (s_ui_group == NULL) return;
+
+    if (enable) {
+        lv_group_add_obj(s_ui_group, ui_DropdownReflowEditPoint);
+        lv_group_add_obj(s_ui_group, ui_SliderReflowEditTime);
+        lv_group_add_obj(s_ui_group, ui_SliderReflowEditTemp);
+        lv_group_add_obj(s_ui_group, ui_ButtonReflowEditApply);
+        lv_group_add_obj(s_ui_group, ui_ButtonReflowEditReset);
+        lv_group_add_obj(s_ui_group, ui_ButtonReflowEditCancel);
+        lv_group_focus_obj(ui_DropdownReflowEditPoint);
+    } else {
+        lv_group_remove_obj(ui_DropdownReflowEditPoint);
+        lv_group_remove_obj(ui_SliderReflowEditTime);
+        lv_group_remove_obj(ui_SliderReflowEditTemp);
+        lv_group_remove_obj(ui_ButtonReflowEditApply);
+        lv_group_remove_obj(ui_ButtonReflowEditReset);
+        lv_group_remove_obj(ui_ButtonReflowEditCancel);
+    }
+}
+
+static void reflow_edit_modal_show(bool show) {
+    if (show == s_reflow_edit_modal_open) return;
+    s_reflow_edit_modal_open = show;
+
+    bsp_display_lock(0);
+    if (show) {
+        lv_obj_clear_flag(ui_ReflowEditOverlay, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_state(ui_DropdownReflowProfile, LV_STATE_DISABLED);
+        lv_obj_add_state(ui_ButtonReflowEdit, LV_STATE_DISABLED);
+        lv_obj_add_state(ui_ButtonReflowStart, LV_STATE_DISABLED);
+        lv_obj_add_state(ui_ButtonReflowPause, LV_STATE_DISABLED);
+        lv_obj_add_state(ui_ButtonReflowStop, LV_STATE_DISABLED);
+    } else {
+        lv_obj_add_flag(ui_ReflowEditOverlay, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_state(ui_DropdownReflowProfile, LV_STATE_DISABLED);
+        lv_obj_clear_state(ui_ButtonReflowEdit, LV_STATE_DISABLED);
+        lv_obj_clear_state(ui_ButtonReflowStart, LV_STATE_DISABLED);
+        lv_obj_clear_state(ui_ButtonReflowPause, LV_STATE_DISABLED);
+        lv_obj_clear_state(ui_ButtonReflowStop, LV_STATE_DISABLED);
+    }
+    bsp_display_unlock();
+
+    reflow_edit_modal_group_enable(show);
+}
+
+static void reflow_edit_modal_load_point(uint8_t profile_id, uint8_t point_idx) {
+    reflow_point_t pts[8] = {0};
+    if (!reflow_service_get_profile_points(profile_id, pts, 8)) return;
+    if (point_idx >= 8) point_idx = 0;
+
+    bsp_display_lock(0);
+    lv_dropdown_set_selected(ui_DropdownReflowEditPoint, point_idx);
+    lv_slider_set_value(ui_SliderReflowEditTime, pts[point_idx].t_s, LV_ANIM_OFF);
+    lv_slider_set_value(ui_SliderReflowEditTemp, pts[point_idx].temp_c, LV_ANIM_OFF);
+
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%u", (unsigned)pts[point_idx].t_s);
+    lv_label_set_text(ui_LabelReflowEditTimeValue, buf);
+    snprintf(buf, sizeof(buf), "%d", (int)pts[point_idx].temp_c);
+    lv_label_set_text(ui_LabelReflowEditTempValue, buf);
+    bsp_display_unlock();
+}
+
+static void dropdown_reflow_profile_event_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code != LV_EVENT_VALUE_CHANGED) return;
+
+    const int sel = lv_dropdown_get_selected(ui_DropdownReflowProfile);
+    app_event_t ev = {.type = APP_EVENT_REFLOW_SET_PROFILE};
+    ev.value.u8 = (uint8_t)sel;
+    (void)app_events_post(&ev, 0);
+}
+
+static void button_reflow_start_event_cb(lv_event_t *e) {
+    (void)e;
+    app_event_t ev = {.type = APP_EVENT_REFLOW_START};
+    (void)app_events_post(&ev, 0);
+}
+
+static void button_reflow_pause_event_cb(lv_event_t *e) {
+    (void)e;
+    app_event_t ev = {.type = APP_EVENT_REFLOW_PAUSE};
+    (void)app_events_post(&ev, 0);
+}
+
+static void button_reflow_stop_event_cb(lv_event_t *e) {
+    (void)e;
+    app_event_t ev = {.type = APP_EVENT_REFLOW_STOP};
+    (void)app_events_post(&ev, 0);
+}
+
+static void reflow_edit_overlay_event_cb(lv_event_t *e) {
+    // Only close when the overlay itself is clicked (ignore clicks on the panel/children).
+    lv_obj_t *target = lv_event_get_target(e);
+    if (target != ui_ReflowEditOverlay) return;
+    reflow_edit_modal_show(false);
+}
+
+static void button_reflow_edit_event_cb(lv_event_t *e) {
+    (void)e;
+
+    reflow_snapshot_t snap = {0};
+    reflow_service_snapshot(&snap);
+    if (snap.state == REFLOW_STATE_RUNNING) return;  // disallow editing while running
+
+    const uint8_t profile_id = (uint8_t)lv_dropdown_get_selected(ui_DropdownReflowProfile);
+    reflow_edit_modal_load_point(profile_id, 0);
+    reflow_edit_modal_show(true);
+}
+
+static void dropdown_reflow_edit_point_event_cb(lv_event_t *e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code != LV_EVENT_VALUE_CHANGED) return;
+
+    const uint8_t profile_id = (uint8_t)lv_dropdown_get_selected(ui_DropdownReflowProfile);
+    const uint8_t point_idx = (uint8_t)lv_dropdown_get_selected(ui_DropdownReflowEditPoint);
+    reflow_edit_modal_load_point(profile_id, point_idx);
+}
+
+static void button_reflow_edit_apply_event_cb(lv_event_t *e) {
+    (void)e;
+    const uint8_t profile_id = (uint8_t)lv_dropdown_get_selected(ui_DropdownReflowProfile);
+    const uint8_t point_idx = (uint8_t)lv_dropdown_get_selected(ui_DropdownReflowEditPoint);
+
+    app_event_t ev = {.type = APP_EVENT_REFLOW_EDIT_POINT};
+    ev.value.reflow_point.profile_id = profile_id;
+    ev.value.reflow_point.point_idx = point_idx;
+    ev.value.reflow_point.t_s = (uint16_t)lv_slider_get_value(ui_SliderReflowEditTime);
+    ev.value.reflow_point.temp_c = (int16_t)lv_slider_get_value(ui_SliderReflowEditTemp);
+    (void)app_events_post(&ev, 0);
+}
+
+static void slider_reflow_edit_time_event_cb(lv_event_t *e) {
+    (void)e;
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%d", (int)lv_slider_get_value(ui_SliderReflowEditTime));
+    bsp_display_lock(0);
+    lv_label_set_text(ui_LabelReflowEditTimeValue, buf);
+    bsp_display_unlock();
+}
+
+static void slider_reflow_edit_temp_event_cb(lv_event_t *e) {
+    (void)e;
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%d", (int)lv_slider_get_value(ui_SliderReflowEditTemp));
+    bsp_display_lock(0);
+    lv_label_set_text(ui_LabelReflowEditTempValue, buf);
+    bsp_display_unlock();
+}
+
+static void button_reflow_edit_reset_event_cb(lv_event_t *e) {
+    (void)e;
+    const uint8_t profile_id = (uint8_t)lv_dropdown_get_selected(ui_DropdownReflowProfile);
+    app_event_t ev = {.type = APP_EVENT_REFLOW_RESET_PROFILE};
+    ev.value.u8 = profile_id;
+    (void)app_events_post(&ev, 0);
+}
+
+static void button_reflow_edit_cancel_event_cb(lv_event_t *e) {
+    (void)e;
+    reflow_edit_modal_show(false);
+}
+
 void app_lvgl_display(void) {
     bsp_display_lock(0);
 
     lv_group_t *g = lv_group_create();
+    s_ui_group = g;
     lv_indev_set_group(bsp_display_get_input_dev(), g);
     lv_group_set_wrap(g, false);  // 禁用循环滚动
 
@@ -415,6 +586,31 @@ void app_lvgl_display(void) {
     lv_obj_add_event_cb(ui_Chart1, chart_draw_event_cb, LV_EVENT_DRAW_PART_BEGIN, NULL);
     lv_group_add_obj(g, ui_ButtonChartRestart);
     lv_obj_add_event_cb(ui_ButtonChartRestart, chart_clicked_event_cb, LV_EVENT_CLICKED, NULL);
+
+    // REFLOW page
+    lv_chart_set_update_mode(ui_ReflowChart, LV_CHART_UPDATE_MODE_SHIFT);
+    ui_ReflowChart_series_tset = lv_chart_add_series(ui_ReflowChart, lv_color_hex(0x85BFD5), LV_CHART_AXIS_PRIMARY_Y);
+    ui_ReflowChart_series_temp = lv_chart_add_series(ui_ReflowChart, lv_color_hex(0xCD6D96), LV_CHART_AXIS_PRIMARY_Y);
+    lv_chart_set_all_value(ui_ReflowChart, ui_ReflowChart_series_temp, LV_CHART_POINT_NONE);
+    lv_group_add_obj(g, ui_DropdownReflowProfile);
+    lv_obj_add_event_cb(ui_DropdownReflowProfile, dropdown_reflow_profile_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+    lv_group_add_obj(g, ui_ButtonReflowEdit);
+    lv_obj_add_event_cb(ui_ButtonReflowEdit, button_reflow_edit_event_cb, LV_EVENT_CLICKED, NULL);
+    lv_group_add_obj(g, ui_ButtonReflowStart);
+    lv_obj_add_event_cb(ui_ButtonReflowStart, button_reflow_start_event_cb, LV_EVENT_CLICKED, NULL);
+    lv_group_add_obj(g, ui_ButtonReflowPause);
+    lv_obj_add_event_cb(ui_ButtonReflowPause, button_reflow_pause_event_cb, LV_EVENT_CLICKED, NULL);
+    lv_group_add_obj(g, ui_ButtonReflowStop);
+    lv_obj_add_event_cb(ui_ButtonReflowStop, button_reflow_stop_event_cb, LV_EVENT_CLICKED, NULL);
+
+    // REFLOW edit modal events (not in group by default)
+    lv_obj_add_event_cb(ui_ReflowEditOverlay, reflow_edit_overlay_event_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(ui_DropdownReflowEditPoint, dropdown_reflow_edit_point_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+    lv_obj_add_event_cb(ui_SliderReflowEditTime, slider_reflow_edit_time_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+    lv_obj_add_event_cb(ui_SliderReflowEditTemp, slider_reflow_edit_temp_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+    lv_obj_add_event_cb(ui_ButtonReflowEditApply, button_reflow_edit_apply_event_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(ui_ButtonReflowEditReset, button_reflow_edit_reset_event_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(ui_ButtonReflowEditCancel, button_reflow_edit_cancel_event_cb, LV_EVENT_CLICKED, NULL);
     // Page 0
     lv_group_add_obj(g, ui_ButtonHeatingToggle);
     // lv_obj_add_event_cb(ui_ButtonHeatingToggle, button_heating_toggle_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
