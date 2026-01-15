@@ -49,7 +49,8 @@ void app_state_init(void) {
     g_state.heating.pwm_current_duty = 0;
     g_state.heating.start_time = 0;
     g_state.heating.is_temp_reached = false;
-    g_state.heating.pcb_r_at_20c = 180;
+    // Aluminum PCB resistance at 20C, x100 (1.30 ohm).
+    g_state.heating.pcb_r_at_20c = 130;
     g_state.heating.supply_max_power = 5;
     g_state.heating.soft_start_time_s = 3;
 
