@@ -1,5 +1,7 @@
 #include "app_ui.h"
 
+#include <math.h>
+
 #include "app_buzzer.h"
 #include "app_events.h"
 #include "app_state.h"
@@ -282,11 +284,13 @@ static void slider_set_ki_event_cb(lv_event_t *e) {
     lv_obj_t *slider = lv_event_get_target(e);
     uint16_t value = lv_slider_get_value(slider);
     app_event_t ev = {.type = APP_EVENT_SET_PID_KI};
-    ev.value.f = (float)value;
+    // UI slider is integer-only. Map to a small Ki range suitable for positional PID.
+    // With PID_LOOP_PERIOD_MS=100ms and pid_ctrl's integral not scaled by dt, Ki must be small.
+    ev.value.f = (float)value / 1000.0f; // 1 slider step = 0.001
     (void)app_events_post(&ev, 0);
 
     char buf_set_ki[16];
-    snprintf(buf_set_ki, sizeof(buf_set_ki), "%d", value);
+    snprintf(buf_set_ki, sizeof(buf_set_ki), "%.3f", (double)ev.value.f);
     bsp_display_lock(0);
     lv_label_set_text(ui_LabelSetKi, buf_set_ki);
     bsp_display_unlock();
@@ -369,6 +373,23 @@ static void slider_set_min_volt_event_cb(lv_event_t *e) {
     bsp_display_unlock();
 }
 
+static void slider_set_soft_start_time_event_cb(lv_event_t *e) {
+    lv_obj_t *slider = lv_event_get_target(e);
+    int current_value = lv_slider_get_value(slider);
+    if (current_value < 0) current_value = 0;
+    if (current_value > 100) current_value = 100;
+
+    app_event_t ev = {.type = APP_EVENT_SET_SOFT_START_TIME};
+    ev.value.u8 = (uint8_t)current_value;
+    (void)app_events_post(&ev, 0);
+
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%ds", current_value);
+    bsp_display_lock(0);
+    lv_label_set_text(ui_LabelSetSoftStartTime, buf);
+    bsp_display_unlock();
+}
+
 void app_lvgl_display(void) {
     bsp_display_lock(0);
 
@@ -437,6 +458,9 @@ void app_lvgl_display(void) {
     lv_group_add_obj(g, ui_SliderSetShuntR);
     lv_obj_add_event_cb(ui_SliderSetShuntR, slider_set_shunt_r_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
     lv_obj_remove_style(ui_SliderSetShuntR, NULL, LV_STATE_EDITED);
+    lv_group_add_obj(g, ui_SliderSetSoftStartTime);
+    lv_obj_add_event_cb(ui_SliderSetSoftStartTime, slider_set_soft_start_time_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+    lv_obj_remove_style(ui_SliderSetSoftStartTime, NULL, LV_STATE_EDITED);
     // Page 3
     lv_group_add_obj(g, ui_SliderSetBL);
     lv_obj_add_event_cb(ui_SliderSetBL, slider_set_bl_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
@@ -480,7 +504,6 @@ void lvgl_widgets_values_init(void) {
     lv_label_set_text(ui_LabelRealTemp3, buf0);
 
     update_slider_and_label(ui_LabelSetKp, ui_SliderSetKp, "%d", (uint16_t)st.temp.pid.kp);
-    update_slider_and_label(ui_LabelSetKi, ui_SliderSetKi, "%d", (uint16_t)st.temp.pid.ki);
     update_slider_and_label(ui_LabelSetKd, ui_SliderSetKd, "%d", (uint16_t)st.temp.pid.kd);
     update_slider_and_label(ui_LabelSetTemp, ui_SliderSetTemp, "%d℃", st.temp.pid_target);
     update_slider_and_label(ui_LabelSetMaxPower, ui_SliderSetMaxPower, "%dW", st.heating.supply_max_power);
@@ -492,6 +515,16 @@ void lvgl_widgets_values_init(void) {
     update_slider_and_label(ui_LabelSetTiltThreshold, ui_SliderSetTiltThreshold, "%d°", st.lis2dh12.tilt_threshold);
     update_slider_and_label(ui_LabelSetShuntR, ui_SliderSetShuntR, "%dmR", st.power.shunt_res);
     update_slider_and_label(ui_LabelSetMinVolt, ui_SliderSetMinVolt, "%dV", st.power.min_voltage);
+    update_slider_and_label(ui_LabelSetSoftStartTime, ui_SliderSetSoftStartTime, "%ds", (int)st.heating.soft_start_time_s);
+
+    // PID Ki uses fractional value; show 3 decimals and map to the integer slider (x1000).
+    char buf_ki[16];
+    snprintf(buf_ki, sizeof(buf_ki), "%.3f", (double)st.temp.pid.ki);
+    lv_label_set_text(ui_LabelSetKi, buf_ki);
+    int ki_slider = (int)lroundf(st.temp.pid.ki * 1000.0f);
+    if (ki_slider < 0) ki_slider = 0;
+    if (ki_slider > 300) ki_slider = 300; // matches ui_SliderSetKi range in generated UI
+    lv_slider_set_value(ui_SliderSetKi, ki_slider, LV_ANIM_OFF);
 
     // pcb_r_at_20c float 特殊处理一下
     char buf[16];

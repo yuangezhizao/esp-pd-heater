@@ -11,7 +11,8 @@ float power_limit(float supply_voltage,
                   uint32_t heating_start_time_ms,
                   float current_power_w,
                   uint32_t current_duty,
-                  uint32_t max_duty) {
+                  uint32_t max_duty,
+                  uint8_t soft_start_time_s) {
     // Goal: keep INA226 measured power <= user max_power (conservative, no intentional overshoot).
     // NOTE: absolute "never exceed" isn't physically possible due to sensor/thermal latency;
     // this algorithm prioritizes conservatism and fast backoff when an over-limit sample is observed.
@@ -58,9 +59,21 @@ float power_limit(float supply_voltage,
 
     // Safety margin: avoid intentionally sitting exactly at the limit.
     // Fixed guard so high-power settings don't get penalized by a percentage.
-    const float guard_w = 0.2f;
-    float effective_max_power = max_power - guard_w;
-    if (effective_max_power < 0.0f) effective_max_power = 0.0f;
+    const float guard_w = 0.1f;
+    float effective_max_power_final = max_power - guard_w;
+    if (effective_max_power_final < 0.0f) effective_max_power_final = 0.0f;
+
+    // Time-based soft-start: ramp the *allowed max power* during the first seconds of a heating session.
+    // This keeps the user-facing meaning intuitive: "soft_start_time_s seconds to reach max_power".
+    float effective_max_power = effective_max_power_final;
+    const float ramp_s = (float)soft_start_time_s;
+    if (ramp_s > 0.0f) {
+        const uint32_t now_ms = (uint32_t)(now_us / 1000);
+        uint32_t elapsed_ms = 0;
+        if (now_ms >= heating_start_time_ms) elapsed_ms = now_ms - heating_start_time_ms;
+        const float ramp_ratio = fminf(fmaxf((float)elapsed_ms / (ramp_s * 1000.0f), 0.0f), 1.0f);
+        effective_max_power = effective_max_power_final * ramp_ratio;
+    }
 
     // Max power changed: scale down cap immediately if needed.
     if (s_last_max_power > 0.0f && max_power < s_last_max_power && s_p_full_est_w > 0.0f) {
@@ -86,8 +99,8 @@ float power_limit(float supply_voltage,
             // Fallback: assume the heater could be quite powerful at full duty.
             p_full_upper = 250.0f;
         }
-        // Ensure p_full_upper not below effective_max_power.
-        if (p_full_upper < effective_max_power) p_full_upper = effective_max_power;
+        // Ensure p_full_upper not below final effective max power (avoid an overly pessimistic estimate).
+        if (p_full_upper < effective_max_power_final) p_full_upper = effective_max_power_final;
         s_p_full_est_w = p_full_upper;
     }
 
@@ -96,7 +109,7 @@ float power_limit(float supply_voltage,
         float p_full_sample = current_power_w / duty_ratio;
         if (isfinite(p_full_sample)) {
             // Clamp to a sane range to avoid noise blow-up.
-            if (p_full_sample < effective_max_power) p_full_sample = effective_max_power;
+            if (p_full_sample < effective_max_power_final) p_full_sample = effective_max_power_final;
             if (p_full_sample > 600.0f) p_full_sample = 600.0f;
             const float alpha = 0.12f;
             s_p_full_est_w = (1.0f - alpha) * s_p_full_est_w + alpha * p_full_sample;
@@ -108,9 +121,12 @@ float power_limit(float supply_voltage,
     cap_target = fminf(fmaxf(cap_target, 0.0f), 1.0f);
 
     // Fast backoff if we ever see an over-limit measurement.
-    if (current_power_w > max_power && duty_ratio > 0.0f) {
-        // Backoff uses the true user limit (max_power) and reacts immediately when we observe an over-limit sample.
-        float cap_backoff = duty_ratio * (max_power / current_power_w);
+    // Use the ramped max power for backoff threshold so soft-start is enforced even with sensing latency.
+    float max_power_now = effective_max_power + guard_w;
+    if (max_power_now < 0.0f) max_power_now = 0.0f;
+    if (current_power_w > max_power_now && duty_ratio > 0.0f) {
+        // Backoff reacts immediately when we observe an over-limit sample.
+        float cap_backoff = duty_ratio * (max_power_now / current_power_w);
         cap_backoff = fminf(fmaxf(cap_backoff, 0.0f), 1.0f);
         if (cap_backoff < cap_target) cap_target = cap_backoff;
     }

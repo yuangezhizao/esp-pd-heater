@@ -118,6 +118,9 @@ static void controller_handle_event(const app_event_t *event) {
         case APP_EVENT_SET_MIN_VOLTAGE:
             app_state_set_min_voltage(event->value.u8);
             break;
+        case APP_EVENT_SET_SOFT_START_TIME:
+            app_state_set_soft_start_time(event->value.u8);
+            break;
         case APP_EVENT_DATA_RECORD_RESTART:
             app_state_set_data_record_restart(true);
             break;

@@ -161,7 +161,8 @@ static void pt1000_pid_task(void *pvParameter) {
                                                 st.heating.start_time,
                                                 st.power.power,
                                                 st.heating.pwm_current_duty,
-                                                st.heating.pwm_max_duty);
+                                                st.heating.pwm_max_duty,
+                                                st.heating.soft_start_time_s);
             float max_output = (float)st.heating.pwm_max_duty * power_limit_value;
             if (fabsf(max_output - last_max_output) >= 1.0f) {
                 app_state_lock();
@@ -175,6 +176,19 @@ static void pt1000_pid_task(void *pvParameter) {
             pid_compute(g_state.temp.pid_ctrl, pid_temperature_error, &pid_output_value);
             app_state_unlock();
         } else {
+            if (!st.heating.on) {
+                // Ensure power limiter session state is reset when heating stops.
+                // Otherwise the next heating session may inherit a stale duty cap and skip the soft-start.
+                (void)power_limit(st.power.voltage,
+                                 st.heating.supply_max_power,
+                                 st.heating.pcb_r_at_20c / 100.0f,
+                                 pt1000_temp,
+                                 0,
+                                 st.power.power,
+                                 st.heating.pwm_current_duty,
+                                 st.heating.pwm_max_duty,
+                                 st.heating.soft_start_time_s);
+            }
             pid_output_value = 0;
             if (last_heating_on) {
                 app_state_lock();

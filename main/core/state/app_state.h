@@ -21,6 +21,7 @@
 #define NVS_KEY_TILT_THRESHOLD "tThres"           // 倾倒阈值角度
 #define NVS_KEY_SHUNT_RESISTANCE "shuntR"         // INA226 采样电阻值(mΩ)
 #define NVS_KEY_MIN_VOLTAGE "minVolt"             // 最低加热电压(V)
+#define NVS_KEY_SOFT_START_TIME "rampS"           // 缓启动时间(s), 0=关闭
 
 // 全局状态结构体
 typedef struct {
@@ -30,6 +31,7 @@ typedef struct {
         bool is_temp_reached;         // 是否已达到目标温度
         uint16_t pcb_r_at_20c;        // 铝基板 在 20℃ 时的阻值
         uint8_t supply_max_power;     // 电源最大功率限制
+        uint8_t soft_start_time_s;    // 缓启动时间(s), 0=关闭
         uint32_t pwm_max_duty;        // pwm 最大占空比
         uint32_t pwm_current_duty;    // pwm 当前占空比
     } heating;
@@ -106,4 +108,5 @@ void app_state_set_buzzer_note(uint8_t note);
 void app_state_set_tilt_threshold(uint8_t threshold_deg);
 void app_state_set_shunt_res(uint8_t shunt_res_mohm);  // 1-20
 void app_state_set_min_voltage(uint8_t min_voltage_v); // 4-20
+void app_state_set_soft_start_time(uint8_t soft_start_time_s); // 0-100
 void app_state_set_data_record_restart(bool restart);

@@ -1,5 +1,7 @@
 #include "app_state.h"
 
+#include <math.h>
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 
@@ -49,19 +51,20 @@ void app_state_init(void) {
     g_state.heating.is_temp_reached = false;
     g_state.heating.pcb_r_at_20c = 180;
     g_state.heating.supply_max_power = 5;
+    g_state.heating.soft_start_time_s = 3;
 
     // 温度相关初始化
     g_state.temp.pt1000 = -99.0f;
     g_state.temp.chip = -99.0f;
     g_state.temp.pid_target = 45;
-    g_state.temp.pid.kp = 100;
-    g_state.temp.pid.ki = 6;
-    g_state.temp.pid.kd = 3;
+    g_state.temp.pid.kp = 20;
+    g_state.temp.pid.ki = 0.16f;
+    g_state.temp.pid.kd = 20;
     g_state.temp.pid.max_output = 0;
     g_state.temp.pid.min_output = 0;
     g_state.temp.pid.max_integral = 1000;
     g_state.temp.pid.min_integral = -1000;
-    g_state.temp.pid.cal_type = PID_CAL_TYPE_INCREMENTAL;
+    g_state.temp.pid.cal_type = PID_CAL_TYPE_POSITIONAL;
 
     // ADC相关初始化
     g_state.adc.upper_div_r = 3000;
@@ -237,6 +240,15 @@ void app_state_set_min_voltage(uint8_t min_voltage_v) {
     app_state_unlock();
 }
 
+void app_state_set_soft_start_time(uint8_t soft_start_time_s) {
+    app_state_lock();
+    if (soft_start_time_s > 100) soft_start_time_s = 100;
+    bool changed = (g_state.heating.soft_start_time_s != soft_start_time_s);
+    g_state.heating.soft_start_time_s = soft_start_time_s;
+    mark_nvs_dirty_if_changed(changed);
+    app_state_unlock();
+}
+
 void app_state_set_data_record_restart(bool restart) {
     app_state_lock();
     g_state.system.data_record_restart = restart;
@@ -261,7 +273,8 @@ void app_state_load(void) {
         }
 
         if (nvs_get_u16(nvs_handle, NVS_KEY_PID_KI, &value_u16) == ESP_OK) {
-            g_state.temp.pid.ki = (float)value_u16;
+            // Store Ki in NVS as Ki_x1000 to preserve fractional UI adjustments.
+            g_state.temp.pid.ki = (float)value_u16 / 1000.0f;
         } else {
             ESP_LOGW(TAG, "NVS_KEY_PID_KI not found, using default value: %.1f", g_state.temp.pid.ki);
         }
@@ -344,6 +357,12 @@ void app_state_load(void) {
             ESP_LOGW(TAG, "NVS_KEY_MIN_VOLTAGE not found, using default value: %d", g_state.power.min_voltage);
         }
 
+        if (nvs_get_u8(nvs_handle, NVS_KEY_SOFT_START_TIME, &value_u8) == ESP_OK) {
+            g_state.heating.soft_start_time_s = value_u8;
+        } else {
+            ESP_LOGW(TAG, "NVS_KEY_SOFT_START_TIME not found, using default value: %d", g_state.heating.soft_start_time_s);
+        }
+
     } else {
         ESP_LOGE(TAG, "Failed to open NVS for loading variables");
     }
@@ -377,6 +396,7 @@ void app_state_save(void) {
     uint8_t tilt_threshold = g_state.lis2dh12.tilt_threshold;
     uint8_t shunt_res = g_state.power.shunt_res;
     uint8_t min_voltage = g_state.power.min_voltage;
+    uint8_t soft_start_time_s = g_state.heating.soft_start_time_s;
     app_state_unlock();
 
     nvs_handle_t nvs_handle;
@@ -385,7 +405,9 @@ void app_state_save(void) {
     bool saved = false;
     if (err == ESP_OK) {
         ESP_ERROR_CHECK_WITHOUT_ABORT(nvs_set_u16(nvs_handle, NVS_KEY_PID_KP, (uint16_t)pid_kp));
-        ESP_ERROR_CHECK_WITHOUT_ABORT(nvs_set_u16(nvs_handle, NVS_KEY_PID_KI, (uint16_t)pid_ki));
+        // Store Ki in NVS as Ki_x1000 to preserve fractional UI adjustments.
+        uint16_t pid_ki_x1000 = (uint16_t)lroundf(pid_ki * 1000.0f);
+        ESP_ERROR_CHECK_WITHOUT_ABORT(nvs_set_u16(nvs_handle, NVS_KEY_PID_KI, pid_ki_x1000));
         ESP_ERROR_CHECK_WITHOUT_ABORT(nvs_set_u16(nvs_handle, NVS_KEY_PID_KD, (uint16_t)pid_kd));
         ESP_ERROR_CHECK_WITHOUT_ABORT(nvs_set_u16(nvs_handle, NVS_KEY_PCB_RESISTANCE, pcb_r_at_20c));
         ESP_ERROR_CHECK_WITHOUT_ABORT(nvs_set_u8(nvs_handle, NVS_KEY_SUPPLY_MAX_POWER, supply_max_power));
@@ -398,6 +420,7 @@ void app_state_save(void) {
         ESP_ERROR_CHECK_WITHOUT_ABORT(nvs_set_u8(nvs_handle, NVS_KEY_TILT_THRESHOLD, tilt_threshold));
         ESP_ERROR_CHECK_WITHOUT_ABORT(nvs_set_u8(nvs_handle, NVS_KEY_SHUNT_RESISTANCE, shunt_res));
         ESP_ERROR_CHECK_WITHOUT_ABORT(nvs_set_u8(nvs_handle, NVS_KEY_MIN_VOLTAGE, min_voltage));
+        ESP_ERROR_CHECK_WITHOUT_ABORT(nvs_set_u8(nvs_handle, NVS_KEY_SOFT_START_TIME, soft_start_time_s));
         ESP_ERROR_CHECK_WITHOUT_ABORT(nvs_commit(nvs_handle));
 
         ESP_LOGI("NVS", "NVS variables saved");

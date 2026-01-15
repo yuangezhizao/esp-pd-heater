@@ -9,4 +9,5 @@ float power_limit(float supply_voltage,
                   uint32_t heating_start_time_ms,
                   float current_power_w,
                   uint32_t current_duty,
-                  uint32_t max_duty);
+                  uint32_t max_duty,
+                  uint8_t soft_start_time_s);
