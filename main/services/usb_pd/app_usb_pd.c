@@ -150,6 +150,7 @@ void app_pd_update(void) {
             husb238_get_pd_response(husb238, &pd_response);
             app_strbuf_append(&sb, get_pd_response_string(pd_response));
         }
+
     } else {
         // ch32x035_pd_handle_t ch32x035 = (ch32x035_pd_handle_t)pd_state.chip_handle;
         app_strbuf_append(&sb, "PD CHIP: CH32X035");
@@ -179,26 +180,29 @@ bool app_pd_request_voltage(pd_voltage_t voltage) {
 
     if (pd_state.chip_type == PD_CHIP_HUSB238) {
         husb238_handle_t husb238 = (husb238_handle_t)pd_state.chip_handle;
+        if (husb238 == NULL || !pd_state.is_attached) return false;
         HUSB238_PDSelection pd_selections[] = {PD_SRC_5V, PD_SRC_9V, PD_SRC_12V, PD_SRC_15V, PD_SRC_18V, PD_SRC_20V};
-        husb238_select_pd(husb238, pd_selections[voltage]);
-        husb238_request_pd(husb238);
-        return true;
+        esp_err_t ret_sel = husb238_select_pd(husb238, pd_selections[voltage]);
+        esp_err_t ret_req = (ret_sel == ESP_OK) ? husb238_request_pd(husb238) : ret_sel;
+        return ret_req == ESP_OK;
     } else {
         ch32x035_pd_handle_t ch32x035 = (ch32x035_pd_handle_t)pd_state.chip_handle;
-        ch32x035_pd_request_voltage(ch32x035, voltage_map[voltage]);
-        return true;
+        if (ch32x035 == NULL) return false;
+        return ch32x035_pd_request_voltage(ch32x035, voltage_map[voltage]) == ESP_OK;
     }
 }
 
 void app_pd_request_max_voltage(void) {
     if (pd_state.chip_type == PD_CHIP_HUSB238) {
         husb238_handle_t husb238 = (husb238_handle_t)pd_state.chip_handle;
+        if (husb238 == NULL || !pd_state.is_attached) return;
         HUSB238_PDSelection pd_selections[] = {PD_SRC_5V, PD_SRC_9V, PD_SRC_12V, PD_SRC_15V, PD_SRC_18V, PD_SRC_20V};
 
         husb238_select_pd(husb238, pd_selections[pd_state.max_voltage]);
         husb238_request_pd(husb238);
     } else {
         ch32x035_pd_handle_t ch32x035 = (ch32x035_pd_handle_t)pd_state.chip_handle;
+        if (ch32x035 == NULL) return;
         // 电压映射表
         const uint8_t voltage_steps[] = {9, 12, 15, 20};
 

@@ -490,7 +490,7 @@ static void slider_set_soft_start_time_event_cb(lv_event_t *e) {
     lv_obj_t *slider = lv_event_get_target(e);
     int current_value = lv_slider_get_value(slider);
     if (current_value < 0) current_value = 0;
-    if (current_value > 100) current_value = 100;
+    if (current_value > 10) current_value = 10;
 
     app_event_t ev = {.type = APP_EVENT_SET_SOFT_START_TIME};
     ev.value.u8 = (uint8_t)current_value;
@@ -504,8 +504,14 @@ static void slider_set_soft_start_time_event_cb(lv_event_t *e) {
 }
 
 static void reflow_hint_set(const char *text) {
+    const bool visible = (text != NULL && text[0] != '\0');
     bsp_display_lock(0);
-    lv_label_set_text(ui_LabelReflowRunHint, text ? text : "");
+    lv_label_set_text(ui_LabelReflowRunHint, visible ? text : "");
+    if (visible) {
+        lv_obj_clear_flag(ui_LabelReflowRunHint, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_add_flag(ui_LabelReflowRunHint, LV_OBJ_FLAG_HIDDEN);
+    }
     bsp_display_unlock();
 }
 
@@ -782,6 +788,7 @@ void app_lvgl_display(void) {
     lv_chart_set_all_value(ui_ReflowRunChart, ui_ReflowRunChart_series_temp, LV_CHART_POINT_NONE);
     lv_obj_add_event_cb(ui_ReflowRunChart, reflow_chart_draw_event_cb, LV_EVENT_DRAW_PART_BEGIN, NULL);
     lv_obj_add_event_cb(ui_ReflowRunChart, reflow_chart_draw_event_cb, LV_EVENT_DRAW_PART_END, NULL);
+    reflow_hint_set("");
 
     lv_group_add_obj(g, ui_ButtonReflowRunSelect);
     lv_obj_add_event_cb(ui_ButtonReflowRunSelect, button_reflow_select_event_cb, LV_EVENT_CLICKED, NULL);
@@ -795,9 +802,7 @@ void app_lvgl_display(void) {
     lv_obj_add_event_cb(ui_ButtonReflowRunStart, button_reflow_start_event_cb, LV_EVENT_LONG_PRESSED, NULL);
     // Page 0
     lv_group_add_obj(g, ui_ButtonHeatingToggle);
-    // lv_obj_add_event_cb(ui_ButtonHeatingToggle, button_heating_toggle_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
-    // lv_obj_scroll_to_view_recursive(ui_ButtonHeatingToggle, LV_ANIM_OFF);
-    // lv_group_focus_obj(ui_ButtonHeatingToggle);
+    lv_obj_add_event_cb(ui_ButtonHeatingToggle, button_heating_toggle_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
     // Page -2
     lv_group_add_obj(g, ui_ContainerPageM2);
     lv_obj_add_event_cb(ui_ContainerPageM2, button_heating_toggle_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
@@ -853,7 +858,6 @@ void app_lvgl_display(void) {
     lv_obj_add_event_cb(ui_SliderSetTiltThreshold, slider_set_tilt_threshold_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
     lv_obj_remove_style(ui_SliderSetTiltThreshold, NULL, LV_STATE_EDITED);
     // Page 5
-    // lv_group_add_obj(g, ui_Panel1);
     lv_group_add_obj(g, ui_ContainerPage5);
 
     bsp_display_unlock();

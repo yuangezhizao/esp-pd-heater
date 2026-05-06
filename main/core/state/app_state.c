@@ -243,7 +243,7 @@ void app_state_set_min_voltage(uint8_t min_voltage_v) {
 
 void app_state_set_soft_start_time(uint8_t soft_start_time_s) {
     app_state_lock();
-    if (soft_start_time_s > 100) soft_start_time_s = 100;
+    if (soft_start_time_s > 10) soft_start_time_s = 10;
     bool changed = (g_state.heating.soft_start_time_s != soft_start_time_s);
     g_state.heating.soft_start_time_s = soft_start_time_s;
     mark_nvs_dirty_if_changed(changed);

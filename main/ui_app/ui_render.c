@@ -89,7 +89,6 @@ static void ui_render_task(void *pvParameter) {
         reflow_service_snapshot(&reflow);
 
         bool undervoltage = (st.power.voltage < (float)st.power.min_voltage);
-
         (void)app_pd_get_info_text_copy(pd_text, sizeof(pd_text));
 
         bsp_display_lock(0);
@@ -98,15 +97,26 @@ static void ui_render_task(void *pvParameter) {
         if (!st.heating.on) {
             apply_heating_ui_off(undervoltage);
         } else {
+            lv_obj_add_state(ui_ButtonHeatingToggle, LV_STATE_CHECKED);
+            lv_obj_add_state(ui_ContainerPageM2, LV_STATE_CHECKED);
+            lv_label_set_text(ui_LabelHeatingToggle, "STOP");
             // Clear strikethrough while heating is on.
             lv_obj_set_style_text_decor(ui_LabelHeatingToggle, LV_TEXT_DECOR_NONE, LV_PART_MAIN | LV_STATE_DEFAULT);
         }
 
         // Real voltage/current/power (test UI widgets)
+        format_float_to_5chars(buf_voltage, sizeof(buf_voltage), st.power.voltage, "V");
+        lv_label_set_text(ui_LabelRealVoltage, buf_voltage);
         format_float_to_width(buf_voltage, sizeof(buf_voltage), 4, st.power.voltage, "V");
         lv_label_set_text(ui_LabelRealVoltage1, buf_voltage);
+
+        format_float_to_5chars(buf_current, sizeof(buf_current), st.power.current, "A");
+        lv_label_set_text(ui_LabelRealCurrent, buf_current);
         format_float_to_width(buf_current, sizeof(buf_current), 4, st.power.current, "A");
         lv_label_set_text(ui_LabelRealCurrent1, buf_current);
+
+        format_float_to_5chars(buf_power, sizeof(buf_power), st.power.power, "W");
+        lv_label_set_text(ui_LabelRealPower, buf_power);
         format_float_to_width(buf_power, sizeof(buf_power), 4, st.power.power, "W");
         lv_label_set_text(ui_LabelRealPower1, buf_power);
 
@@ -115,17 +125,27 @@ static void ui_render_task(void *pvParameter) {
         if (st.heating.pwm_max_duty > 0) {
             duty_percent = (float)st.heating.pwm_current_duty * 100.0f / (float)st.heating.pwm_max_duty;
         }
+        format_float_to_5chars(buf_power, sizeof(buf_power), duty_percent, "%");
+        lv_label_set_text(ui_LabelRealDuty, buf_power);
         lv_bar_set_value(ui_BarRealDuty, (int32_t)lroundf(duty_percent), LV_ANIM_ON);
 
         float temp = st.temp.pt1000;
-        if (temp >= 0) {
+        format_float_to_5chars(buf_temp, sizeof(buf_temp), temp, "℃");
+        lv_label_set_text(ui_LabelRealTemp, buf_temp);
+        if (!isfinite(temp)) {
+            lv_label_set_text(ui_LabelRealTemp1, "---");
+            lv_label_set_text(ui_LabelRealTemp2, "-");
+        } else if (temp >= 0) {
             snprintf(buf_temp, sizeof(buf_temp), "%03d", (int)temp);
+            lv_label_set_text(ui_LabelRealTemp1, buf_temp);
+            snprintf(buf_temp, sizeof(buf_temp), "%d", abs((int)(fmodf(temp * 10.0f, 10.0f))));
+            lv_label_set_text(ui_LabelRealTemp2, buf_temp);
         } else {
             snprintf(buf_temp, sizeof(buf_temp), "-%02d", abs((int)temp));
+            lv_label_set_text(ui_LabelRealTemp1, buf_temp);
+            snprintf(buf_temp, sizeof(buf_temp), "%d", abs((int)(fmodf(temp * 10.0f, 10.0f))));
+            lv_label_set_text(ui_LabelRealTemp2, buf_temp);
         }
-        lv_label_set_text(ui_LabelRealTemp1, buf_temp);
-        snprintf(buf_temp, sizeof(buf_temp), "%d", abs((int)(fmodf(temp * 10.0f, 10.0f))));
-        lv_label_set_text(ui_LabelRealTemp2, buf_temp);
 
         // PD info: update only when content changes (reduce LVGL heap churn)
         if (strncmp(pd_text, pd_text_last, sizeof(pd_text_last)) != 0) {
@@ -196,15 +216,15 @@ static void ui_render_task(void *pvParameter) {
 
             // Labels over the chart
             if (isfinite(st.temp.pt1000)) {
-                snprintf(buf_reflow, sizeof(buf_reflow), "%03d/%03d℃",
+                snprintf(buf_reflow, sizeof(buf_reflow), "%d/%d℃",
                          (int)lroundf(st.temp.pt1000),
                          (int)lroundf(reflow.tset_c));
             } else {
-                snprintf(buf_reflow, sizeof(buf_reflow), "---/%03d℃", (int)lroundf(reflow.tset_c));
+                snprintf(buf_reflow, sizeof(buf_reflow), "---/%d℃", (int)lroundf(reflow.tset_c));
             }
             lv_label_set_text(ui_LabelReflowRunTempTset, buf_reflow);
 
-            snprintf(buf_reflow, sizeof(buf_reflow), "功率:%02dW", (int)lroundf(st.power.power));
+            snprintf(buf_reflow, sizeof(buf_reflow), "功率:%.1fW", (double)st.power.power);
             lv_label_set_text(ui_LabelReflowRunPower, buf_reflow);
 
             snprintf(buf_reflow, sizeof(buf_reflow), "%u/%us", (unsigned)reflow.elapsed_s, (unsigned)reflow.total_s);

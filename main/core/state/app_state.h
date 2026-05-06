@@ -108,5 +108,5 @@ void app_state_set_buzzer_note(uint8_t note);
 void app_state_set_tilt_threshold(uint8_t threshold_deg);
 void app_state_set_shunt_res(uint8_t shunt_res_mohm);  // 1-20
 void app_state_set_min_voltage(uint8_t min_voltage_v); // 4-20
-void app_state_set_soft_start_time(uint8_t soft_start_time_s); // 0-100
+void app_state_set_soft_start_time(uint8_t soft_start_time_s); // 0-10
 void app_state_set_data_record_restart(bool restart);
