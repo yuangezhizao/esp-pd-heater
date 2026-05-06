@@ -3,14 +3,22 @@
 #include <math.h>
 #include <string.h>
 
+#include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/portmacro.h"
+#include "nvs.h"
 
 #define REFLOW_PROFILE_COUNT 3
 #define REFLOW_POINT_COUNT 8
 
 #define REFLOW_OVERTEMP_C 300
+
+#define REFLOW_NVS_NAMESPACE "storage"
+#define REFLOW_NVS_KEY_SELECTED_PROFILE "rfSel"
+#define REFLOW_NVS_KEY_PROFILE_POINTS "rfPts"
+
+static const char *TAG = "reflow_service";
 
 typedef struct {
     reflow_state_t state;
@@ -27,6 +35,7 @@ typedef struct {
 
 static portMUX_TYPE s_lock = portMUX_INITIALIZER_UNLOCKED;
 static reflow_state_internal_t s = {0};
+static bool s_dirty = false;
 
 // Compile-time defaults. Peak is 220C by design; last point cools down the preview.
 static const reflow_point_t s_profile_defaults[REFLOW_PROFILE_COUNT][REFLOW_POINT_COUNT] = {
@@ -45,6 +54,23 @@ static const reflow_point_t s_profile_defaults[REFLOW_PROFILE_COUNT][REFLOW_POIN
 };
 
 static reflow_point_t s_profile_points[REFLOW_PROFILE_COUNT][REFLOW_POINT_COUNT];
+
+static void mark_dirty_unsafe(void) {
+    s_dirty = true;
+}
+
+static void load_defaults_unsafe(void) {
+    memset(&s, 0, sizeof(s));
+    s.state = REFLOW_STATE_IDLE;
+    s.profile_id = 0;
+    s.base_elapsed_ms = 0;
+    s.run_start_ms = 0;
+    s.tset_c = (float)s_profile_defaults[0][0].temp_c;
+    s.run_id = 0;
+    memset(s.revision, 0, sizeof(s.revision));
+    memcpy(s_profile_points, s_profile_defaults, sizeof(s_profile_points));
+    s_dirty = false;
+}
 
 static uint16_t profile_total_s_unsafe(uint8_t profile_id) {
     return s_profile_points[profile_id][REFLOW_POINT_COUNT - 1].t_s;
@@ -102,18 +128,59 @@ static bool validate_profile_points_array_unsafe(const reflow_point_t *points) {
     return true;
 }
 
-void reflow_service_init(void) {
+static bool validate_all_profiles(const reflow_point_t points[REFLOW_PROFILE_COUNT][REFLOW_POINT_COUNT]) {
+    if (points == NULL) return false;
+    for (size_t i = 0; i < REFLOW_PROFILE_COUNT; i++) {
+        if (!validate_profile_points_array_unsafe(points[i])) return false;
+    }
+    return true;
+}
+
+static void try_load_from_nvs(void) {
+    nvs_handle_t nvs = 0;
+    esp_err_t err = nvs_open(REFLOW_NVS_NAMESPACE, NVS_READWRITE, &nvs);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to open NVS for reflow load: %s", esp_err_to_name(err));
+        return;
+    }
+
+    reflow_point_t loaded_points[REFLOW_PROFILE_COUNT][REFLOW_POINT_COUNT];
+    size_t points_size = sizeof(loaded_points);
+    bool points_valid = false;
+    uint8_t loaded_profile_id = 0;
+
+    err = nvs_get_blob(nvs, REFLOW_NVS_KEY_PROFILE_POINTS, loaded_points, &points_size);
+    if (err == ESP_OK && points_size == sizeof(loaded_points) && validate_all_profiles(loaded_points)) {
+        points_valid = true;
+    } else if (err != ESP_ERR_NVS_NOT_FOUND) {
+        ESP_LOGW(TAG, "Invalid reflow profile blob in NVS, using defaults");
+    }
+
+    err = nvs_get_u8(nvs, REFLOW_NVS_KEY_SELECTED_PROFILE, &loaded_profile_id);
+    if (err != ESP_OK || loaded_profile_id >= REFLOW_PROFILE_COUNT) {
+        loaded_profile_id = 0;
+    }
+
+    nvs_close(nvs);
+
     portENTER_CRITICAL(&s_lock);
-    memset(&s, 0, sizeof(s));
-    s.state = REFLOW_STATE_IDLE;
-    s.profile_id = 0;
+    if (points_valid) {
+        memcpy(s_profile_points, loaded_points, sizeof(s_profile_points));
+    }
+    s.profile_id = loaded_profile_id;
     s.base_elapsed_ms = 0;
     s.run_start_ms = 0;
-    s.tset_c = (float)s_profile_defaults[0][0].temp_c;
-    s.run_id = 0;
-    memset(s.revision, 0, sizeof(s.revision));
-    memcpy(s_profile_points, s_profile_defaults, sizeof(s_profile_points));
+    s.tset_c = interpolate_tset_unsafe(s.profile_id, 0);
+    s_dirty = false;
     portEXIT_CRITICAL(&s_lock);
+}
+
+void reflow_service_init(void) {
+    portENTER_CRITICAL(&s_lock);
+    load_defaults_unsafe();
+    portEXIT_CRITICAL(&s_lock);
+
+    try_load_from_nvs();
 }
 
 void reflow_service_set_profile(uint8_t profile_id) {
@@ -123,6 +190,7 @@ void reflow_service_set_profile(uint8_t profile_id) {
         portEXIT_CRITICAL(&s_lock);
         return;
     }
+    const bool changed = (s.profile_id != profile_id);
     s.profile_id = profile_id;
     // Keep PAUSED elapsed; otherwise show profile start.
     if (s.state != REFLOW_STATE_PAUSED) {
@@ -130,6 +198,7 @@ void reflow_service_set_profile(uint8_t profile_id) {
     }
     s.run_start_ms = 0;
     s.tset_c = interpolate_tset_unsafe(s.profile_id, s.base_elapsed_ms);
+    if (changed) mark_dirty_unsafe();
     portEXIT_CRITICAL(&s_lock);
 }
 
@@ -184,6 +253,7 @@ bool reflow_service_edit_point(uint8_t profile_id, uint8_t point_idx, uint16_t t
             s_profile_points[profile_id][point_idx].t_s = t_s;
             s_profile_points[profile_id][point_idx].temp_c = temp_c;
             s.revision[profile_id]++;
+            mark_dirty_unsafe();
             if (profile_id == s.profile_id) {
                 const uint32_t elapsed_ms = (s.state == REFLOW_STATE_PAUSED) ? s.base_elapsed_ms : 0;
                 s.tset_c = interpolate_tset_unsafe(s.profile_id, elapsed_ms);
@@ -200,6 +270,7 @@ void reflow_service_reset_profile(uint8_t profile_id) {
     if (s.state != REFLOW_STATE_RUNNING) {
         memcpy(&s_profile_points[profile_id][0], &s_profile_defaults[profile_id][0], sizeof(s_profile_points[0]));
         s.revision[profile_id]++;
+        mark_dirty_unsafe();
         if (profile_id == s.profile_id) {
             const uint32_t elapsed_ms = (s.state == REFLOW_STATE_PAUSED) ? s.base_elapsed_ms : 0;
             s.tset_c = interpolate_tset_unsafe(s.profile_id, elapsed_ms);
@@ -220,6 +291,7 @@ bool reflow_service_replace_profile_points(uint8_t profile_id, const reflow_poin
         if (ok) {
             memcpy(s_profile_points[profile_id], points, sizeof(s_profile_points[profile_id]));
             s.revision[profile_id]++;
+            mark_dirty_unsafe();
             if (profile_id == s.profile_id) {
                 const uint32_t elapsed_ms = (s.state == REFLOW_STATE_PAUSED) ? s.base_elapsed_ms : 0;
                 s.tset_c = interpolate_tset_unsafe(s.profile_id, elapsed_ms);
@@ -291,4 +363,58 @@ void reflow_service_snapshot(reflow_snapshot_t *out) {
     out->profile_revision = s.revision[s.profile_id];
     out->run_id = s.run_id;
     portEXIT_CRITICAL(&s_lock);
+}
+
+void reflow_service_save_if_dirty(void) {
+    reflow_point_t points[REFLOW_PROFILE_COUNT][REFLOW_POINT_COUNT];
+    uint8_t profile_id = 0;
+    bool dirty = false;
+
+    portENTER_CRITICAL(&s_lock);
+    dirty = s_dirty;
+    if (dirty) {
+        memcpy(points, s_profile_points, sizeof(points));
+        profile_id = s.profile_id;
+        s_dirty = false;
+    }
+    portEXIT_CRITICAL(&s_lock);
+
+    if (!dirty) return;
+
+    nvs_handle_t nvs = 0;
+    esp_err_t err = nvs_open(REFLOW_NVS_NAMESPACE, NVS_READWRITE, &nvs);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to open NVS for reflow save: %s", esp_err_to_name(err));
+        portENTER_CRITICAL(&s_lock);
+        s_dirty = true;
+        portEXIT_CRITICAL(&s_lock);
+        return;
+    }
+
+    bool saved = true;
+    err = nvs_set_u8(nvs, REFLOW_NVS_KEY_SELECTED_PROFILE, profile_id);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to write reflow selected profile: %s", esp_err_to_name(err));
+        saved = false;
+    }
+    err = nvs_set_blob(nvs, REFLOW_NVS_KEY_PROFILE_POINTS, points, sizeof(points));
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to write reflow profile blob: %s", esp_err_to_name(err));
+        saved = false;
+    }
+    if (saved) {
+        err = nvs_commit(nvs);
+        if (err != ESP_OK) saved = false;
+    }
+    nvs_close(nvs);
+
+    if (!saved) {
+        ESP_LOGE(TAG, "Failed to commit reflow NVS data: %s", esp_err_to_name(err));
+        portENTER_CRITICAL(&s_lock);
+        s_dirty = true;
+        portEXIT_CRITICAL(&s_lock);
+        return;
+    }
+
+    ESP_LOGI(TAG, "Reflow profiles saved");
 }

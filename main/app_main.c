@@ -28,7 +28,7 @@ void app_main(void) {
     app_state_init();
     app_state_load();
 
-    // Reflow profiles (RAM-only edits for now)
+    // Reflow profiles (editable in RAM, with deferred NVS persistence)
     reflow_service_init();
 
     // Init I2C bus (shared)
@@ -72,5 +72,6 @@ void app_main(void) {
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(5000));
         app_state_save();
+        reflow_service_save_if_dirty();
     }
 }

@@ -689,6 +689,13 @@ static void button_reflow_edit_event_cb(lv_event_t *e) {
         reflow_edit_apply_delta(delta);
         return;
     }
+
+    if (code == LV_EVENT_LONG_PRESSED) {
+        if (s_reflow_ui_mode != REFLOW_UI_MODE_EDIT) return;
+        reflow_ui_exit_mode();
+        if (s_ui_group) lv_group_focus_obj(ui_ButtonReflowRunEdit);
+        return;
+    }
 }
 
 static void button_reflow_start_event_cb(lv_event_t *e) {
@@ -770,6 +777,7 @@ void app_lvgl_display(void) {
     lv_group_add_obj(g, ui_ButtonReflowRunEdit);
     lv_obj_add_event_cb(ui_ButtonReflowRunEdit, button_reflow_edit_event_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(ui_ButtonReflowRunEdit, button_reflow_edit_event_cb, LV_EVENT_KEY, NULL);
+    lv_obj_add_event_cb(ui_ButtonReflowRunEdit, button_reflow_edit_event_cb, LV_EVENT_LONG_PRESSED, NULL);
     lv_group_add_obj(g, ui_ButtonReflowRunStart);
     lv_obj_add_event_cb(ui_ButtonReflowRunStart, button_reflow_start_event_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_add_event_cb(ui_ButtonReflowRunStart, button_reflow_start_event_cb, LV_EVENT_LONG_PRESSED, NULL);

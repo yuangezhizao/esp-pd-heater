@@ -66,6 +66,9 @@ reflow_state_t reflow_service_tick(uint32_t now_ms, float measured_temp_c, float
 // Snapshot for UI/diagnostics (thread-safe).
 void reflow_service_snapshot(reflow_snapshot_t *out);
 
+// Persist edited profiles / selected profile if they changed.
+void reflow_service_save_if_dirty(void);
+
 #ifdef __cplusplus
 }
 #endif
