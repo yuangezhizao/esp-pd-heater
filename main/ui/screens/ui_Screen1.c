@@ -143,7 +143,7 @@ void ui_Screen1_screen_init(void)
     lv_obj_set_width(ui_LabelReflowRunTempTset, LV_SIZE_CONTENT);   /// 1
     lv_obj_set_height(ui_LabelReflowRunTempTset, LV_SIZE_CONTENT);    /// 1
     lv_obj_set_align(ui_LabelReflowRunTempTset, LV_ALIGN_TOP_LEFT);
-    lv_label_set_text(ui_LabelReflowRunTempTset, "T:--- S:---");
+    lv_label_set_text(ui_LabelReflowRunTempTset, "---/---℃");
     lv_obj_add_flag(ui_LabelReflowRunTempTset, LV_OBJ_FLAG_FLOATING);     /// Flags
     lv_obj_set_style_text_font(ui_LabelReflowRunTempTset, &ui_font_SmileySans15, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(ui_LabelReflowRunTempTset, lv_color_hex(0x999999), LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -152,7 +152,7 @@ void ui_Screen1_screen_init(void)
     lv_obj_set_width(ui_LabelReflowRunPower, LV_SIZE_CONTENT);   /// 1
     lv_obj_set_height(ui_LabelReflowRunPower, LV_SIZE_CONTENT);    /// 1
     lv_obj_set_align(ui_LabelReflowRunPower, LV_ALIGN_TOP_RIGHT);
-    lv_label_set_text(ui_LabelReflowRunPower, "P:--W");
+    lv_label_set_text(ui_LabelReflowRunPower, "功率:--W");
     lv_obj_add_flag(ui_LabelReflowRunPower, LV_OBJ_FLAG_FLOATING);     /// Flags
     lv_obj_set_style_text_font(ui_LabelReflowRunPower, &ui_font_SmileySans15, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(ui_LabelReflowRunPower, lv_color_hex(0x999999), LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -170,7 +170,7 @@ void ui_Screen1_screen_init(void)
     lv_obj_set_width(ui_LabelReflowRunState, LV_SIZE_CONTENT);   /// 1
     lv_obj_set_height(ui_LabelReflowRunState, LV_SIZE_CONTENT);    /// 1
     lv_obj_set_align(ui_LabelReflowRunState, LV_ALIGN_BOTTOM_RIGHT);
-    lv_label_set_text(ui_LabelReflowRunState, "IDLE");
+    lv_label_set_text(ui_LabelReflowRunState, "空闲");
     lv_obj_add_flag(ui_LabelReflowRunState, LV_OBJ_FLAG_FLOATING);     /// Flags
     lv_obj_set_style_text_font(ui_LabelReflowRunState, &ui_font_SmileySans15, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(ui_LabelReflowRunState, lv_color_hex(0x999999), LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -1068,7 +1068,7 @@ void ui_Screen1_screen_init(void)
     lv_obj_set_width(ui_LabelSoftStart, 48);
     lv_obj_set_height(ui_LabelSoftStart, LV_SIZE_CONTENT);    /// 1
     lv_obj_set_align(ui_LabelSoftStart, LV_ALIGN_CENTER);
-    lv_label_set_text(ui_LabelSoftStart, "RAMP");
+    lv_label_set_text(ui_LabelSoftStart, "缓启动");
 
     ui_SliderSetSoftStartTime = lv_slider_create(ui_Container22);
     lv_slider_set_range(ui_SliderSetSoftStartTime, 0, 100);

@@ -59,6 +59,8 @@ static uint8_t s_reflow_edit_profile_id = 0;
 static uint8_t s_reflow_edit_point_idx = 0;
 static reflow_point_t s_reflow_edit_work[8];
 static reflow_edit_field_t s_reflow_edit_field = REFLOW_EDIT_FIELD_TEMP;
+static bool s_reflow_edit_ignore_click_once = false;
+static bool s_reflow_start_ignore_click_once = false;
 
 static void reflow_edit_update_hint(void);
 
@@ -670,6 +672,10 @@ static void button_reflow_edit_event_cb(lv_event_t *e) {
     const lv_event_code_t code = lv_event_get_code(e);
 
     if (code == LV_EVENT_CLICKED) {
+        if (s_reflow_edit_ignore_click_once) {
+            s_reflow_edit_ignore_click_once = false;
+            return;
+        }
         if (s_reflow_ui_mode == REFLOW_UI_MODE_SELECT) return;
 
         if (s_reflow_ui_mode != REFLOW_UI_MODE_EDIT) {
@@ -692,6 +698,7 @@ static void button_reflow_edit_event_cb(lv_event_t *e) {
 
     if (code == LV_EVENT_LONG_PRESSED) {
         if (s_reflow_ui_mode != REFLOW_UI_MODE_EDIT) return;
+        s_reflow_edit_ignore_click_once = true;
         reflow_ui_exit_mode();
         if (s_ui_group) lv_group_focus_obj(ui_ButtonReflowRunEdit);
         return;
@@ -708,6 +715,10 @@ static void button_reflow_start_event_cb(lv_event_t *e) {
     app_event_t ev = {0};
 
     if (code == LV_EVENT_CLICKED) {
+        if (s_reflow_start_ignore_click_once) {
+            s_reflow_start_ignore_click_once = false;
+            return;
+        }
         ev.type = (snap.state == REFLOW_STATE_RUNNING) ? APP_EVENT_REFLOW_PAUSE : APP_EVENT_REFLOW_START;
         (void)app_events_post(&ev, 0);
         return;
@@ -715,6 +726,7 @@ static void button_reflow_start_event_cb(lv_event_t *e) {
 
     if (code == LV_EVENT_LONG_PRESSED) {
         if (snap.state == REFLOW_STATE_RUNNING || snap.state == REFLOW_STATE_PAUSED) {
+            s_reflow_start_ignore_click_once = true;
             ev.type = APP_EVENT_REFLOW_STOP;
             (void)app_events_post(&ev, 0);
         }
@@ -745,9 +757,9 @@ void app_lvgl_display(void) {
     // ui_Chart1_series_2 = lv_chart_add_series(ui_Chart1, lv_color_hex(0xF784B6), LV_CHART_AXIS_SECONDARY_Y);
     ui_Chart1_series_2 = lv_chart_add_series(ui_Chart1, lv_color_hex(0xCD6D96), LV_CHART_AXIS_SECONDARY_Y);
     // Smoother-looking line + visible round points at each sample (not true AA; depends on LVGL config).
-    lv_obj_set_style_line_width(ui_Chart1, 2, LV_PART_ITEMS | LV_STATE_DEFAULT);
+    lv_obj_set_style_line_width(ui_Chart1, 1, LV_PART_ITEMS | LV_STATE_DEFAULT);
     lv_obj_set_style_line_rounded(ui_Chart1, true, LV_PART_ITEMS | LV_STATE_DEFAULT);
-    lv_obj_set_style_size(ui_Chart1, 4, LV_PART_INDICATOR | LV_STATE_DEFAULT);
+    lv_obj_set_style_size(ui_Chart1, 0, LV_PART_INDICATOR | LV_STATE_DEFAULT);
     lv_obj_set_style_radius(ui_Chart1, LV_RADIUS_CIRCLE, LV_PART_INDICATOR | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_opa(ui_Chart1, LV_OPA_COVER, LV_PART_INDICATOR | LV_STATE_DEFAULT);
     lv_obj_add_event_cb(ui_Chart1, chart_draw_event_cb, LV_EVENT_DRAW_PART_BEGIN, NULL);

@@ -148,8 +148,8 @@ static void ui_render_task(void *pvParameter) {
             } else if (is_paused) {
                 lv_obj_clear_state(ui_ButtonReflowRunSelect, LV_STATE_DISABLED);
                 lv_obj_clear_state(ui_ButtonReflowRunEdit, LV_STATE_DISABLED);
-                lv_label_set_text(ui_LabelReflowRunStart, "START");
-                lv_obj_set_style_bg_color(ui_ButtonReflowRunStart, lv_color_hex(0x1AD1B2), LV_PART_MAIN | LV_STATE_DEFAULT);
+                lv_label_set_text(ui_LabelReflowRunStart, "RESUME");
+                lv_obj_set_style_bg_color(ui_ButtonReflowRunStart, lv_color_hex(0xAACA4B), LV_PART_MAIN | LV_STATE_DEFAULT);
             } else {
                 lv_obj_clear_state(ui_ButtonReflowRunSelect, LV_STATE_DISABLED);
                 lv_obj_clear_state(ui_ButtonReflowRunEdit, LV_STATE_DISABLED);
@@ -196,23 +196,23 @@ static void ui_render_task(void *pvParameter) {
 
             // Labels over the chart
             if (isfinite(st.temp.pt1000)) {
-                snprintf(buf_reflow, sizeof(buf_reflow), "T:%03d℃ S:%03d℃",
+                snprintf(buf_reflow, sizeof(buf_reflow), "%03d/%03d℃",
                          (int)lroundf(st.temp.pt1000),
                          (int)lroundf(reflow.tset_c));
             } else {
-                snprintf(buf_reflow, sizeof(buf_reflow), "T:---℃ S:%03d℃", (int)lroundf(reflow.tset_c));
+                snprintf(buf_reflow, sizeof(buf_reflow), "---/%03d℃", (int)lroundf(reflow.tset_c));
             }
             lv_label_set_text(ui_LabelReflowRunTempTset, buf_reflow);
 
-            snprintf(buf_reflow, sizeof(buf_reflow), "P:%02dW", (int)lroundf(st.power.power));
+            snprintf(buf_reflow, sizeof(buf_reflow), "功率:%02dW", (int)lroundf(st.power.power));
             lv_label_set_text(ui_LabelReflowRunPower, buf_reflow);
 
             snprintf(buf_reflow, sizeof(buf_reflow), "%u/%us", (unsigned)reflow.elapsed_s, (unsigned)reflow.total_s);
             lv_label_set_text(ui_LabelReflowRunTime, buf_reflow);
 
-            const char *st_txt = "IDLE";
-            if (reflow.state == REFLOW_STATE_RUNNING) st_txt = "RUN";
-            else if (reflow.state == REFLOW_STATE_PAUSED) st_txt = "PAUS";
+            const char *st_txt = "空闲";
+            if (reflow.state == REFLOW_STATE_RUNNING) st_txt = "加热";
+            else if (reflow.state == REFLOW_STATE_PAUSED) st_txt = "暂停";
             lv_label_set_text(ui_LabelReflowRunState, st_txt);
         }
 
