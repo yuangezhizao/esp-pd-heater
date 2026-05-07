@@ -12,35 +12,48 @@ if [[ ! -f "${FLASH_PROJECT_ARGS}" ]]; then
 fi
 
 mkdir -p "${OUT_DIR}"
+rm -f "${OUT_DIR}/flash_project_args.orig"
 
-BOOTLOADER_BIN="${BUILD_DIR}/bootloader/bootloader.bin"
-PARTITION_BIN="${BUILD_DIR}/partition_table/partition-table.bin"
 APP_BIN_GLOB=("${BUILD_DIR}"/*.bin)
+README_GLOB=(README*)
 
-if [[ -f "${BOOTLOADER_BIN}" ]]; then
-  cp -f "${BOOTLOADER_BIN}" "${OUT_DIR}/bootloader.bin"
-fi
-if [[ -f "${PARTITION_BIN}" ]]; then
-  cp -f "${PARTITION_BIN}" "${OUT_DIR}/partition-table.bin"
-fi
+# Copy all binaries referenced in flash_project_args into OUT_DIR using
+# release-friendly file names expected by the generated dist-local args file.
+while read -r _ path _; do
+  [[ -n "${path:-}" ]] || continue
+  src="${BUILD_DIR}/${path}"
+  [[ -f "${src}" ]] || continue
 
-# Copy the app binary referenced in flash_project_args (skip bootloader/partition_table)
+  if [[ "${path}" == bootloader/* ]]; then
+    dst="bootloader.bin"
+  elif [[ "${path}" == partition_table/* ]]; then
+    dst="partition-table.bin"
+  else
+    dst="$(basename "${path}")"
+  fi
+
+  cp -f "${src}" "${OUT_DIR}/${dst}"
+done < <(tail -n +2 "${FLASH_PROJECT_ARGS}")
+
+# Fallback: copy any top-level .bin in build dir if the args file did not
+# reference an app image for some reason.
 APP_BIN_REL="$(awk 'NR>1 && $2 ~ /\.bin$/ && index($2,"bootloader/")!=1 && index($2,"partition_table/")!=1 {print $2; exit}' "${FLASH_PROJECT_ARGS}")"
 APP_BIN="${BUILD_DIR}/${APP_BIN_REL}"
-if [[ -f "${APP_BIN}" ]]; then
-  cp -f "${APP_BIN}" "${OUT_DIR}/$(basename "${APP_BIN}")"
-else
-  # Fallback: copy any top-level .bin in build dir
+if [[ ! -f "${APP_BIN}" ]]; then
   for f in "${APP_BIN_GLOB[@]}"; do
     [[ -f "${f}" ]] || continue
     cp -f "${f}" "${OUT_DIR}/$(basename "${f}")"
   done
 fi
 
-cp -f "${FLASH_PROJECT_ARGS}" "${OUT_DIR}/flash_project_args.orig"
 if [[ -f "${BUILD_DIR}/flasher_args.json" ]]; then
   cp -f "${BUILD_DIR}/flasher_args.json" "${OUT_DIR}/flasher_args.json"
 fi
+
+for f in "${README_GLOB[@]}"; do
+  [[ -f "${f}" ]] || continue
+  cp -f "${f}" "${OUT_DIR}/$(basename "${f}")"
+done
 
 # Create a dist-local flash args file that references files in OUT_DIR.
 {
