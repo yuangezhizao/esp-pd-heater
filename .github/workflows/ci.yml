@@ -12,7 +12,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container: espressif/idf:v5.5.1
+    container: espressif/idf:v5.5.4
     env:
       IDF_TARGET: esp32c3
     steps:
@@ -54,4 +54,3 @@ jobs:
           if-no-files-found: error
           path: |
             dist/
-
