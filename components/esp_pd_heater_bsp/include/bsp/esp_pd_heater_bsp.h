@@ -103,8 +103,7 @@ typedef struct {
  *
  * Display's backlight must be enabled explicitly by calling bsp_display_backlight_on()
  ****************************************************8**********************************************/
-// #define BSP_LCD_PIXEL_CLOCK_HZ     SPI_MASTER_FREQ_40M
-#define BSP_LCD_PIXEL_CLOCK_HZ     SPI_MASTER_FREQ_80M
+#define BSP_LCD_PIXEL_CLOCK_HZ     SPI_MASTER_FREQ_40M
 #define BSP_LCD_SPI_NUM            (SPI2_HOST)
 
 /**
